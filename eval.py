@@ -38,23 +38,14 @@ parser = argparse.ArgumentParser(
 parser.add_argument('--trained_model',
                     default='weights/ssd300_mAP_77.43_v2.pth', type=str,
                     help='Trained state_dict file path to open')
-parser.add_argument('--save_folder', default='eval/', type=str,
-                    help='File path to save results')
 parser.add_argument('--confidence_threshold', default=0.01, type=float,
                     help='Detection confidence threshold')
-parser.add_argument('--top_k', default=5, type=int,
-                    help='Further restrict the number of predictions to parse')
 parser.add_argument('--cuda', default=True, type=str2bool,
                     help='Use cuda to train model')
 parser.add_argument('--voc_root', default=VOC_ROOT,
                     help='Location of VOC root directory')
-parser.add_argument('--cleanup', default=True, type=str2bool,
-                    help='Cleanup and remove results files following eval')
 
 args = parser.parse_args()
-
-if not os.path.exists(args.save_folder):
-    os.mkdir(args.save_folder)
 
 if torch.cuda.is_available():
     if args.cuda:
@@ -133,9 +124,9 @@ def get_output_dir(name, phase):
     return filedir
 
 
-def get_voc_results_file_template(image_set, cls):
+def get_voc_results_file_template(image_set):
     # VOCdevkit/VOC2007/results/det_test_aeroplane.txt
-    filename = 'det_' + image_set + '_%s.txt' % (cls)
+    filename = 'det_' + image_set + '_%s.txt'
     filedir = os.path.join(devkit_path, 'results')
     if not os.path.exists(filedir):
         os.makedirs(filedir)
@@ -146,7 +137,7 @@ def get_voc_results_file_template(image_set, cls):
 def write_voc_results_file(all_boxes, dataset):
     for cls_ind, cls in enumerate(labelmap):
         print('Writing {:s} VOC results file'.format(cls))
-        filename = get_voc_results_file_template(set_type, cls)
+        filename = get_voc_results_file_template(set_type) % (cls)
         with open(filename, 'wt') as f:
             for im_ind, index in enumerate(dataset.ids):
                 dets = all_boxes[cls_ind+1][im_ind]
@@ -169,9 +160,9 @@ def do_python_eval(output_dir='output', use_07=True):
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
     for i, cls in enumerate(labelmap):
-        filename = get_voc_results_file_template(set_type, cls)
+        filepath = get_voc_results_file_template(set_type)
         rec, prec, ap = voc_eval(
-           filename, annopath, imgsetpath.format(set_type), cls, cachedir,
+           filepath, annopath, imgsetpath.format(set_type), cls, cachedir,
            ovthresh=0.5, use_07_metric=use_07_metric)
         aps += [ap]
         print('AP for {} = {:.4f}'.format(cls, ap))
@@ -293,7 +284,7 @@ cachedir: Directory for caching the annotations
                                  'det': det}
 
     # read dets
-    detfile = detpath.format(classname)
+    detfile = detpath % (classname)
     with open(detfile, 'r') as f:
         lines = f.readlines()
     if any(lines) == 1:
@@ -361,7 +352,7 @@ cachedir: Directory for caching the annotations
     return rec, prec, ap
 
 
-def test_net(save_folder, net, cuda, dataset, transform, top_k,
+def test_net(net, cuda, dataset, transform,
              im_size=300, thresh=0.05):
     num_images = len(dataset)
     # all detections are collected into:
@@ -383,14 +374,14 @@ def test_net(save_folder, net, cuda, dataset, transform, top_k,
             x = x.cuda()
         _t['im_detect'].tic()
         detections = net(x).data
-        detect_time = _t['im_detect'].toc(average=False)
+        detect_time = _t['im_detect'].toc(average=True)
 
         # skip j = 0, because it's the background class
         for j in range(1, detections.size(1)):
             dets = detections[0, j, :]
             mask = dets[:, 0].gt(0.).expand(5, dets.size(0)).t()
             dets = torch.masked_select(dets, mask).view(-1, 5)
-            if dets.dim() == 0:
+            if dets.size(0) == 0:
                 continue
             boxes = dets[:, 1:]
             boxes[:, 0] *= w
@@ -433,6 +424,6 @@ if __name__ == '__main__':
         net = net.cuda()
         cudnn.benchmark = True
     # evaluation
-    test_net(args.save_folder, net, args.cuda, dataset,
-             BaseTransform(net.size, dataset_mean), args.top_k, 300,
+    test_net(net, args.cuda, dataset,
+             BaseTransform(net.size, dataset_mean), 300,
              thresh=args.confidence_threshold)
