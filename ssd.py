@@ -31,7 +31,8 @@ class SSD(nn.Module):
         self.num_classes = num_classes
         self.cfg = (coco, voc)[num_classes == 21]
         self.priorbox = PriorBox(self.cfg)
-        self.priors = Variable(self.priorbox.forward(), volatile=True)
+        with torch.no_grad():
+            self.priors = self.priorbox.forward()
         self.size = size
 
         # SSD network
@@ -45,7 +46,7 @@ class SSD(nn.Module):
 
         if phase == 'test':
             self.softmax = nn.Softmax(dim=-1)
-            self.detect = Detect(num_classes, 0, 200, 0.01, 0.45)
+            self.detect = Detect(num_classes, 200, 0.01, 0.45)
 
     def forward(self, x):
         """Applies network layers and ops on input image(s) x.
@@ -62,9 +63,9 @@ class SSD(nn.Module):
 
             train:
                 list of concat outputs from:
-                    1: confidence layers, Shape: [batch*num_priors,num_classes]
-                    2: localization layers, Shape: [batch,num_priors*4]
-                    3: priorbox layers, Shape: [2,num_priors*4]
+                    1: localization layers, Shape: [batch, num_priors, 4]
+                    2: confidence layers, Shape: [batch, num_priors, num_classes]
+                    3: priorbox layers, Shape: [num_priors, 4]
         """
         sources = list()
         loc = list()
@@ -100,7 +101,7 @@ class SSD(nn.Module):
                 loc.view(loc.size(0), -1, 4),                   # loc preds
                 self.softmax(conf.view(conf.size(0), -1,
                              self.num_classes)),                # conf preds
-                self.priors.type(type(x.data))                  # default boxes
+                self.priors.type(x.data.type())                  # default boxes
             )
         else:
             output = (
@@ -112,7 +113,7 @@ class SSD(nn.Module):
 
     def load_weights(self, base_file):
         other, ext = os.path.splitext(base_file)
-        if ext == '.pkl' or '.pth':
+        if ext in ('.pkl', '.pth'):
             print('Loading weights into state dict...')
             self.load_state_dict(torch.load(base_file,
                                  map_location=lambda storage, loc: storage))
