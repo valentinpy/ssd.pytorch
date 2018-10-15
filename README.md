@@ -45,7 +45,7 @@ Microsoft COCO: Common Objects in Context
 ##### Download COCO 2014
 ```Shell
 # specify a directory for dataset to be downloaded into, else default is ~/data/
-sh data/scripts/COCO2014.sh
+sh data/scripts/COCO2014.sh # <directory>
 ```
 
 ### VOC Dataset
