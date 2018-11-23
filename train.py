@@ -19,69 +19,54 @@ import datetime
 def str2bool(v):
     return v.lower() in ("yes", "true", "t", "1")
 
+def arg_parser():
+    parser = argparse.ArgumentParser(description='Single Shot MultiBox Detector Training With Pytorch')
+    # train_set = parser.add_mutually_exclusive_group()
+    parser.add_argument('--dataset', default='VOC', choices=['VOC', 'COCO', 'KAIST'],
+                        type=str, help='VOC, COCO or KAIST (requires image_set )')
+    parser.add_argument('--dataset_root', default=VOC_ROOT,
+                        help='Dataset root directory path')
+    parser.add_argument('--image_set', default=None,
+                        help='[KAIST] Imageset')
+    parser.add_argument('--basenet', default='./weights/vgg16_reducedfc.pth',
+                        help='Pretrained base model')
+    parser.add_argument('--batch_size', default=32, type=int,
+                        help='Batch size for training')
+    parser.add_argument('--resume', default=None, type=str,
+                        help='Checkpoint state_dict file to resume training from')
+    parser.add_argument('--start_iter', default=0, type=int,
+                        help='Resume training at this iter')
+    parser.add_argument('--save_frequency', default=5000, type=int,
+                        help='Frequency to save model [default: 5000 iters]')
+    parser.add_argument('--num_workers', default=4, type=int,
+                        help='Number of workers used in dataloading')
+    parser.add_argument('--cuda', default=True, type=str2bool,
+                        help='Use CUDA to train model')
+    parser.add_argument('--lr', '--learning-rate', default=1e-3, type=float,
+                        help='initial learning rate')
+    parser.add_argument('--momentum', default=0.9, type=float,
+                        help='Momentum value for optim')
+    parser.add_argument('--weight_decay', default=5e-4, type=float,
+                        help='Weight decay for SGD')
+    parser.add_argument('--gamma', default=0.1, type=float,
+                        help='Gamma update for SGD')
+    parser.add_argument('--visdom', default=False, type=str2bool,
+                        help='Use visdom for loss visualization')
+    parser.add_argument('--save_folder', default='checkpoints',
+                        help='Directory for saving checkpoint models')
+    args = parser.parse_args()
 
-parser = argparse.ArgumentParser(
-    description='Single Shot MultiBox Detector Training With Pytorch')
-#train_set = parser.add_mutually_exclusive_group()
-parser.add_argument('--dataset', default='VOC', choices=['VOC', 'COCO', 'KAIST'],
-                    type=str, help='VOC, COCO or KAIST')
-parser.add_argument('--dataset_root', default=VOC_ROOT,
-                    help='Dataset root directory path')
-parser.add_argument('--basenet', default='./weights/vgg16_reducedfc.pth',
-                    help='Pretrained base model')
-parser.add_argument('--batch_size', default=32, type=int,
-                    help='Batch size for training')
-parser.add_argument('--resume', default=None, type=str,
-                    help='Checkpoint state_dict file to resume training from')
-parser.add_argument('--start_iter', default=0, type=int,
-                    help='Resume training at this iter')
-parser.add_argument('--save_frequency', default=5000, type=int,
-                    help='Frequency to save model [default: 5000 iters]')
-parser.add_argument('--num_workers', default=4, type=int,
-                    help='Number of workers used in dataloading')
-parser.add_argument('--cuda', default=True, type=str2bool,
-                    help='Use CUDA to train model')
-parser.add_argument('--lr', '--learning-rate', default=1e-3, type=float,
-                    help='initial learning rate')
-parser.add_argument('--momentum', default=0.9, type=float,
-                    help='Momentum value for optim')
-parser.add_argument('--weight_decay', default=5e-4, type=float,
-                    help='Weight decay for SGD')
-parser.add_argument('--gamma', default=0.1, type=float,
-                    help='Gamma update for SGD')
-parser.add_argument('--visdom', default=False, type=str2bool,
-                    help='Use visdom for loss visualization')
-parser.add_argument('--save_folder', default='checkpoints',
-                    help='Directory for saving checkpoint models')
-args = parser.parse_args()
+    return args
 
 
-if torch.cuda.is_available():
-    if args.cuda:
-        torch.set_default_tensor_type('torch.cuda.FloatTensor')
-    if not args.cuda:
-        print("WARNING: It looks like you have a CUDA device, but aren't " +
-              "using CUDA.\nRun with --cuda for optimal training speed.")
-        torch.set_default_tensor_type('torch.FloatTensor')
-else:
-    torch.set_default_tensor_type('torch.FloatTensor')
 
-if not os.path.exists(args.save_folder):
-    os.makedirs(args.save_folder)
 
-if args.visdom:
-    import visdom
-    viz = visdom.Visdom()
-
-if args.save_frequency < 0:
-    print("save frequency must be > 0")
-    sys.exit(-1)
-
-def train():
+def train(args):
     if args.dataset == 'COCO':
         if args.dataset_root == VOC_ROOT:
             if not os.path.exists(COCO_ROOT):
-                parser.error('Must specify dataset_root if specifying dataset')
+                print('Must specify dataset_root if specifying dataset')
+                sys.exit(-1)
             print("WARNING: Using default COCO dataset_root because " +
                   "--dataset_root was not specified.")
             args.dataset_root = COCO_ROOT
@@ -91,7 +76,8 @@ def train():
                                                           MEANS))
     elif args.dataset == 'VOC':
         if args.dataset_root == COCO_ROOT:
-            parser.error('Must specify dataset if specifying dataset_root')
+            print('Must specify dataset if specifying dataset_root')
+            sys.exit(-1)
         cfg = voc
         dataset = VOCDetection(root=args.dataset_root,
                                transform=SSDAugmentation(cfg['min_dim'],
@@ -99,11 +85,17 @@ def train():
 
     elif args.dataset == 'KAIST':
         if args.dataset_root == COCO_ROOT:
-            parser.error('Must specify dataset if specifying dataset_root')
+            print('Must specify dataset if specifying dataset_root')
+            sys.exit(-1)
+        if (args.image_set is None) or (not os.path.exists(args.image_set)):
+            print("When using kaist, image set must be defined to a valid file: {}".format(args.image_set))
         cfg = kaist
-        dataset = KAISTDetection(root=args.dataset_root,
+        dataset = KAISTDetection(root=args.dataset_root, image_set=args.image_set,
                                transform=SSDAugmentation(cfg['min_dim'],
                                                          MEANS))
+    else:
+        print("No dataset specified")
+        sys.exit(-1)
 
     ssd_net = build_ssd('train', cfg['min_dim'], cfg['num_classes'], dataset=args.dataset)
     net = ssd_net
@@ -220,9 +212,12 @@ def train():
             os.system('ln -sf {} {}'.format(model_name, latest_name))
 
     # save model at the end of the training
-    torch.save(ssd_net.state_dict(), os.path.join(args.save_folder, args.dataset + '.pth'))
+    torch.save(ssd_net.state_dict(), os.path.join(args.save_folder, args.dataset, args.dataset + '.pth'))
     latest_name = os.path.join(args.save_folder, 'ssd300_' + args.dataset + '_latest.pth')
     os.system('ln -sf {} {}'.format(model_name, latest_name))
+
+    print("Finished. Model is saved at {}".format(latest_name))
+    return
 
 
 def adjust_learning_rate(optimizer, gamma, step):
@@ -278,4 +273,34 @@ def update_vis_plot(iteration, loc, conf, window1, window2, update_type,
 
 
 if __name__ == '__main__':
-    train()
+    args = arg_parser()
+
+    if torch.cuda.is_available():
+        if args.cuda:
+            torch.set_default_tensor_type('torch.cuda.FloatTensor')
+        if not args.cuda:
+            print("WARNING: It looks like you have a CUDA device, but aren't " +
+                  "using CUDA.\nRun with --cuda for optimal training speed.")
+            torch.set_default_tensor_type('torch.FloatTensor')
+    else:
+        torch.set_default_tensor_type('torch.FloatTensor')
+
+    if not os.path.exists(args.save_folder):
+        os.makedirs(args.save_folder)
+
+    if not os.path.exists(os.path.join(args.save_folder, args.dataset)):
+        os.makedirs(os.path.join(args.save_folder, args.dataset))
+
+    if len(os.listdir(os.path.join(args.save_folder, args.dataset))) != 0:
+        print("Save directory is not empty!")
+        sys.exit(-1)
+
+    if args.visdom:
+        import visdom
+        viz = visdom.Visdom()
+
+    if args.save_frequency < 0:
+        print("save frequency must be > 0")
+        sys.exit(-1)
+
+    train(args)

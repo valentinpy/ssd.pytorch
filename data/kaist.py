@@ -8,8 +8,9 @@ import torchvision.transforms as transforms
 import cv2
 import numpy as np
 
-KAIST_ROOT = osp.join(HOME, 'data/kaist/')
+KAIST_CLASSES = ('person', )
 
+KAIST_ROOT = osp.join(HOME, 'data/kaist/')
 
 class KAISTAnnotationTransform(object):
     """Transforms a KAIST annotation into a Tensor of bbox coords and label index
@@ -25,7 +26,8 @@ class KAISTAnnotationTransform(object):
     """
 
     def __init__(self, class_to_ind=None, keep_difficult=False):
-        self.class_to_ind = class_to_ind or {"person": 0}
+        self.class_to_ind = class_to_ind or dict(
+            zip(KAIST_CLASSES, range(len(KAIST_CLASSES))))
         self.keep_difficult = keep_difficult
 
     def __call__(self, target, width, height):
