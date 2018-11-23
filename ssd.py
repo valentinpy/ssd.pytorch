@@ -3,9 +3,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 from layers import *
-from data import voc, coco
+from data import voc, coco, kaist
 import os
-
+import sys
 
 class SSD(nn.Module):
     """Single Shot Multibox Architecture
@@ -25,11 +25,21 @@ class SSD(nn.Module):
         head: "multibox head" consists of loc and conf conv layers
     """
 
-    def __init__(self, phase, size, base, extras, head, num_classes):
+    def __init__(self, phase, size, base, extras, head, num_classes, dataset=None):
         super(SSD, self).__init__()
         self.phase = phase
         self.num_classes = num_classes
-        self.cfg = (coco, voc)[num_classes == 21]
+
+        if dataset == "COCO":
+            self.cfg = coco
+        elif dataset == "VOC":
+            self.cfg = voc
+        elif dataset == "KAIST":
+            self.cfg = kaist
+        else:
+            print("Bad dataset, not config found")
+            sys.exit(-1)
+
         self.priorbox = PriorBox(self.cfg)
         with torch.no_grad():
             self.priors = self.priorbox.forward()
@@ -196,7 +206,7 @@ mbox = {
 }
 
 
-def build_ssd(phase, size=300, num_classes=21):
+def build_ssd(phase, size=300, num_classes=None, dataset=None): # TODO VPY: can we use dataset given at init?
     if phase != "test" and phase != "train":
         print("ERROR: Phase: " + phase + " not recognized")
         return
@@ -204,7 +214,14 @@ def build_ssd(phase, size=300, num_classes=21):
         print("ERROR: You specified size " + repr(size) + ". However, " +
               "currently only SSD300 (size=300) is supported!")
         return
+    if num_classes == None:
+        print("num_classes not specified!")
+        return
+    if dataset not in ("VOC", "COCO", "KAIST"):
+        print("Unsupported dataset: {}".format(dataset))
+        return
+
     base_, extras_, head_ = multibox(vgg(base[str(size)], 3),
                                      add_extras(extras[str(size)], 1024),
-                                     mbox[str(size)], num_classes)
-    return SSD(phase, size, base_, extras_, head_, num_classes)
+                                        mbox[str(size)], num_classes)
+    return SSD(phase, size, base_, extras_, head_, num_classes, dataset)

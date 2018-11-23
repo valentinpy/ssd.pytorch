@@ -1,6 +1,6 @@
 from .voc0712 import VOCDetection, VOCAnnotationTransform, VOC_CLASSES, VOC_ROOT
-
 from .coco import COCODetection, COCOAnnotationTransform, COCO_CLASSES, COCO_ROOT, get_label_map
+from .kaist import KAISTDetection, KAISTAnnotationTransform, KAIST_CLASSES, KAIST_ROOT # TODO VPY? labelmap ?
 from .config import *
 import torch
 import cv2

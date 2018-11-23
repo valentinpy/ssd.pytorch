@@ -13,6 +13,7 @@ import torch.nn.init as init
 import torch.utils.data as data
 import numpy as np
 import argparse
+import datetime
 
 
 def str2bool(v):
@@ -22,8 +23,8 @@ def str2bool(v):
 parser = argparse.ArgumentParser(
     description='Single Shot MultiBox Detector Training With Pytorch')
 #train_set = parser.add_mutually_exclusive_group()
-parser.add_argument('--dataset', default='VOC', choices=['VOC', 'COCO'],
-                    type=str, help='VOC or COCO')
+parser.add_argument('--dataset', default='VOC', choices=['VOC', 'COCO', 'KAIST'],
+                    type=str, help='VOC, COCO or KAIST')
 parser.add_argument('--dataset_root', default=VOC_ROOT,
                     help='Dataset root directory path')
 parser.add_argument('--basenet', default='./weights/vgg16_reducedfc.pth',
@@ -34,6 +35,8 @@ parser.add_argument('--resume', default=None, type=str,
                     help='Checkpoint state_dict file to resume training from')
 parser.add_argument('--start_iter', default=0, type=int,
                     help='Resume training at this iter')
+parser.add_argument('--save_frequency', default=5000, type=int,
+                    help='Frequency to save model [default: 5000 iters]')
 parser.add_argument('--num_workers', default=4, type=int,
                     help='Number of workers used in dataloading')
 parser.add_argument('--cuda', default=True, type=str2bool,
@@ -70,6 +73,10 @@ if args.visdom:
     import visdom
     viz = visdom.Visdom()
 
+if args.save_frequency < 0:
+    print("save frequency must be > 0")
+    sys.exit(-1)
+
 def train():
     if args.dataset == 'COCO':
         if args.dataset_root == VOC_ROOT:
@@ -90,7 +97,15 @@ def train():
                                transform=SSDAugmentation(cfg['min_dim'],
                                                          MEANS))
 
-    ssd_net = build_ssd('train', cfg['min_dim'], cfg['num_classes'])
+    elif args.dataset == 'KAIST':
+        if args.dataset_root == COCO_ROOT:
+            parser.error('Must specify dataset if specifying dataset_root')
+        cfg = kaist
+        dataset = KAISTDetection(root=args.dataset_root,
+                               transform=SSDAugmentation(cfg['min_dim'],
+                                                         MEANS))
+
+    ssd_net = build_ssd('train', cfg['min_dim'], cfg['num_classes'], dataset=args.dataset)
     net = ssd_net
 
     if args.cuda:
@@ -127,6 +142,10 @@ def train():
     print('Loading the dataset...')
 
     epoch_size = len(dataset) // args.batch_size
+
+    print('Dataset length: {}'.format(len(dataset)))
+    print('Epoch size: {}'.format(epoch_size))
+
     print('Training SSD on:', dataset.name)
     print('Using the specified args:')
     print(args)
@@ -134,7 +153,7 @@ def train():
     step_index = 0
 
     if args.visdom:
-        vis_title = 'SSD.PyTorch on ' + dataset.name
+        vis_title = 'SSD.PyTorch on ' + dataset.name + '| lr: ' + repr(args.lr)
         vis_legend = ['Loc Loss', 'Conf Loss', 'Total Loss']
         iter_plot = create_vis_plot('Iteration', 'Loss', vis_title, vis_legend)
         epoch_plot = create_vis_plot('Epoch', 'Loss', vis_title, vis_legend)
@@ -184,7 +203,7 @@ def train():
         conf_loss += loss_c.data.item()
 
         if iteration % 10 == 0:
-            print('iter ' + repr(iteration) + ' || lr: %g || Loss: %.4f ||' %
+            print(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S") + " | " + args.dataset + ': iter ' + repr(iteration) + ' || lr: %g || Loss: %.4f ||' %
                   (optimizer.param_groups[0]['lr'], loss.data.item()), end=' ')
             print('data: %.3fms, batch: %.3fs' % (data_time*1000, batch_time))
 
@@ -192,12 +211,18 @@ def train():
             update_vis_plot(iteration, loss_l.data.item(), loss_c.data.item(),
                             iter_plot, epoch_plot, 'append')
 
-        if iteration != 0 and iteration % 5000 == 0:
+        # save model at a given frequency during training
+        if iteration != 0 and iteration % args.save_frequency == 0:
             print('Saving state, iter:', iteration)
-            torch.save(ssd_net.state_dict(), os.path.join(args.save_folder, 'ssd300_' + args.dataset + '_' +
-                       repr(iteration) + '.pth'))
-    torch.save(ssd_net.state_dict(),
-               os.path.join(args.save_folder, args.dataset + '.pth'))
+            model_name = os.path.join(args.save_folder, 'ssd300_' + args.dataset + '_' + repr(iteration) + '.pth')
+            latest_name = os.path.join(args.save_folder, 'ssd300_' + args.dataset + '_latest.pth')
+            torch.save(ssd_net.state_dict(), model_name)
+            os.system('ln -sf {} {}'.format(model_name, latest_name))
+
+    # save model at the end of the training
+    torch.save(ssd_net.state_dict(), os.path.join(args.save_folder, args.dataset + '.pth'))
+    latest_name = os.path.join(args.save_folder, 'ssd300_' + args.dataset + '_latest.pth')
+    os.system('ln -sf {} {}'.format(model_name, latest_name))
 
 
 def adjust_learning_rate(optimizer, gamma, step):

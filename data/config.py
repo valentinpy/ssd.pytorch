@@ -8,7 +8,7 @@ HOME = os.path.expanduser("~")
 COLORS = ((255, 0, 0, 128), (0, 255, 0, 128), (0, 0, 255, 128),
           (0, 255, 255, 128), (255, 0, 255, 128), (255, 255, 0, 128))
 
-MEANS = (104, 117, 123)
+MEANS = (104, 117, 123) # TODO VPY?
 
 # SSD300 CONFIGS
 voc = {
@@ -39,4 +39,19 @@ coco = {
     'variance': [0.1, 0.2],
     'clip': True,
     'name': 'COCO',
+}
+
+kaist = {
+    'num_classes': 2, # TODO VPY with background ?
+    'lr_steps': (80000, 100000, 120000),
+    'max_iter': 120000,
+    'feature_maps': [38, 19, 10, 5, 3, 1], # TODO VPY?
+    'min_dim': 300,
+    'steps': [8, 16, 32, 64, 100, 300], # TODO VPY?
+    'min_sizes': [21, 45, 99, 153, 207, 261], # TODO VPY?
+    'max_sizes': [45, 99, 153, 207, 261, 315], # TODO VPY?
+    'aspect_ratios': [[2], [2, 3], [2, 3], [2, 3], [2], [2]], # TODO VPY?
+    'variance': [0.1, 0.2], # TODO VPY?
+    'clip': True, # TODO VPY?
+    'name': 'KAIST',
 }
