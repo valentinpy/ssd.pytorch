@@ -1,7 +1,7 @@
 from data import *
 from utils.augmentations import SSDAugmentation
 from layers.modules import MultiBoxLoss
-from ssd import build_ssd
+from models.ssd import build_ssd
 import os
 import sys
 import time
@@ -11,7 +11,6 @@ import torch.optim as optim
 import torch.backends.cudnn as cudnn
 import torch.nn.init as init
 import torch.utils.data as data
-import numpy as np
 import argparse
 import datetime
 
@@ -71,17 +70,13 @@ def train(args):
                   "--dataset_root was not specified.")
             args.dataset_root = COCO_ROOT
         cfg = coco
-        dataset = COCODetection(root=args.dataset_root,
-                                transform=SSDAugmentation(cfg['min_dim'],
-                                                          MEANS))
+        dataset = COCODetection(root=args.dataset_root, transform=SSDAugmentation(cfg['min_dim'], MEANS))
     elif args.dataset == 'VOC':
         if args.dataset_root == COCO_ROOT:
             print('Must specify dataset if specifying dataset_root')
             sys.exit(-1)
         cfg = voc
-        dataset = VOCDetection(root=args.dataset_root,
-                               transform=SSDAugmentation(cfg['min_dim'],
-                                                         MEANS))
+        dataset = VOCDetection(root=args.dataset_root, transform=SSDAugmentation(cfg['min_dim'], MEANS))
 
     elif args.dataset == 'KAIST':
         if args.dataset_root == COCO_ROOT:
@@ -90,9 +85,7 @@ def train(args):
         if (args.image_set is None) or (not os.path.exists(args.image_set)):
             print("When using kaist, image set must be defined to a valid file: {}".format(args.image_set))
         cfg = kaist
-        dataset = KAISTDetection(root=args.dataset_root, image_set=args.image_set,
-                               transform=SSDAugmentation(cfg['min_dim'],
-                                                         MEANS))
+        dataset = KAISTDetection(root=args.dataset_root, image_set=args.image_set, transform=SSDAugmentation(cfg['min_dim'], MEANS))
     else:
         print("No dataset specified")
         sys.exit(-1)
@@ -122,11 +115,11 @@ def train(args):
         ssd_net.loc.apply(weights_init)
         ssd_net.conf.apply(weights_init)
 
-    optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum,
-                          weight_decay=args.weight_decay)
+    optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
     criterion = MultiBoxLoss(cfg['num_classes'], 0.5, 3, args.cuda)
 
     net.train()
+
     # loss counters
     loc_loss = 0
     conf_loss = 0
@@ -150,17 +143,14 @@ def train(args):
         iter_plot = create_vis_plot('Iteration', 'Loss', vis_title, vis_legend)
         epoch_plot = create_vis_plot('Epoch', 'Loss', vis_title, vis_legend)
 
-    data_loader = data.DataLoader(dataset, args.batch_size,
-                                  num_workers=args.num_workers,
-                                  shuffle=True, collate_fn=detection_collate,
-                                  pin_memory=True)
+    data_loader = data.DataLoader(dataset, args.batch_size, num_workers=args.num_workers, shuffle=True, collate_fn=detection_collate, pin_memory=True)
+
     # create batch iterator
     batch_iterator = iter(data_loader)
     for iteration in range(args.start_iter, cfg['max_iter']):
         if args.visdom and iteration != 0 and (iteration % epoch_size == 0):
             epoch += 1
-            update_vis_plot(epoch, loc_loss, conf_loss, epoch_plot, None,
-                            'append', epoch_size)
+            update_vis_plot(epoch, loc_loss, conf_loss, epoch_plot, None, 'append', epoch_size)
             # reset epoch loss counters
             loc_loss = 0
             conf_loss = 0
@@ -182,8 +172,10 @@ def train(args):
         if args.cuda:
             images = images.cuda()
             targets = [ann.cuda() for ann in targets]
+
         # forward
         out = net(images)
+
         # backprop
         optimizer.zero_grad()
         loss_l, loss_c = criterion(out, targets)
@@ -200,8 +192,7 @@ def train(args):
             print('data: %.3fms, batch: %.3fs' % (data_time*1000, batch_time))
 
         if args.visdom:
-            update_vis_plot(iteration, loss_l.data.item(), loss_c.data.item(),
-                            iter_plot, epoch_plot, 'append')
+            update_vis_plot(iteration, loss_l.data.item(), loss_c.data.item(), iter_plot, epoch_plot, 'append')
 
         # save model at a given frequency during training
         if iteration != 0 and iteration % args.save_frequency == 0:
@@ -254,8 +245,7 @@ def create_vis_plot(_xlabel, _ylabel, _title, _legend):
     )
 
 
-def update_vis_plot(iteration, loc, conf, window1, window2, update_type,
-                    epoch_size=1):
+def update_vis_plot(iteration, loc, conf, window1, window2, update_type, epoch_size=1):
     viz.line(
         X=torch.ones((1, 3)).cpu() * iteration,
         Y=torch.Tensor([loc, conf, loc + conf]).unsqueeze(0).cpu() / epoch_size,
@@ -279,8 +269,7 @@ if __name__ == '__main__':
         if args.cuda:
             torch.set_default_tensor_type('torch.cuda.FloatTensor')
         if not args.cuda:
-            print("WARNING: It looks like you have a CUDA device, but aren't " +
-                  "using CUDA.\nRun with --cuda for optimal training speed.")
+            print("WARNING: It looks like you have a CUDA device, but aren't using CUDA.\nRun with --cuda for optimal training speed.")
             torch.set_default_tensor_type('torch.FloatTensor')
     else:
         torch.set_default_tensor_type('torch.FloatTensor')
