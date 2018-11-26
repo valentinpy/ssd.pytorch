@@ -76,7 +76,7 @@ class KAISTDetection(data.Dataset):
             (eg. microset.txt  test-all-01.txt  test-all-20.txt  test-day-01.txt
             test-day-20.txt  test-night-01.txt  test-night-20.txt
             train-all-02.txt  train-all-04.txt  train-all-20.txt
-            VPY-test-day.txt  VPY-train-day.txt). This is the name of the file conatining the dataset, which must exist in imageSet folder
+            VPY-test-day.txt  VPY-train-day.txt). This is the name of the file containing the dataset, which must exist in imageSet folder
         transform (callable, optional): transformation to perform on the
             input image
         target_transform (callable, optional): transformation to perform on the
