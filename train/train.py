@@ -58,7 +58,57 @@ def arg_parser():
     return args
 
 
+def compute_KAIST_dataset_mean(dataset_root, image_set):
+    print("compute images mean")
+    images_mean = np.zeros((3), dtype=np.float64)  # [0,0,0]
+    #
+    # # create batch iterator
+    dataset_mean = KAISTDetection(root=dataset_root, image_set=image_set, transform=None)
+    data_loader_mean = data.DataLoader(dataset_mean, 1, num_workers=1, shuffle=False, collate_fn=detection_collate, pin_memory=True)
+    batch_iterator = iter(data_loader_mean)
+    i = 0
+    for i in range(len(dataset_mean)):  # while True:# iteration in range(args.start_iter, cfg['max_iter']):
+        # for i in range(100):
+        #     print("Debug: not all data!!!!!")
+        try:
+            # load train data
+            image, _ = next(batch_iterator)
+            images_mean += image[0].permute(1, 2, 0).numpy().mean(axis=(0, 1))
+        except StopIteration:
+            break
+    #         batch_iterator = iter(data_loader)
+    #         images, targets = next(batch_iterator)
+    # print(i)
+    # print("pre image mean is: {}".format(image_mean))
+    images_mean = images_mean / i
+    print("image mean is: {}".format(images_mean))
+    return images_mean
 
+def compute_VOC_dataset_mean(dataset_root, image_set):
+    print("compute images mean")
+    images_mean = np.zeros((3), dtype=np.float64)  # [0,0,0]
+    #
+    # # create batch iterator
+    dataset_mean = VOCDetection(root=dataset_root, transform=None)
+    data_loader_mean = data.DataLoader(dataset_mean, 1, num_workers=1, shuffle=False, collate_fn=detection_collate, pin_memory=True)
+    batch_iterator = iter(data_loader_mean)
+    i = 0
+    for i in range(len(dataset_mean)):  # while True:# iteration in range(args.start_iter, cfg['max_iter']):
+        # for i in range(100):
+        #     print("Debug: not all data!!!!!")
+        try:
+            # load train data
+            image, _ = next(batch_iterator)
+            images_mean += image[0].permute(1, 2, 0).numpy().mean(axis=(0, 1))
+        except StopIteration:
+            break
+    #         batch_iterator = iter(data_loader)
+    #         images, targets = next(batch_iterator)
+    # print(i)
+    # print("pre image mean is: {}".format(image_mean))
+    images_mean = images_mean / i
+    print("image mean is: {}".format(images_mean))
+    return images_mean
 
 def train(args):
     if args.dataset == 'COCO':
@@ -70,13 +120,15 @@ def train(args):
                   "--dataset_root was not specified.")
             args.dataset_root = COCO_ROOT
         cfg = coco
-        dataset = COCODetection(root=args.dataset_root, transform=SSDAugmentation(cfg['min_dim'], MEANS))
+        dataset = COCODetection(root=args.dataset_root, transform=SSDAugmentation(cfg['min_dim'], VOC_MEANS)) # TODO VPY VOC MEANS ?!
     elif args.dataset == 'VOC':
         if args.dataset_root == COCO_ROOT:
             print('Must specify dataset if specifying dataset_root')
             sys.exit(-1)
         cfg = voc
-        dataset = VOCDetection(root=args.dataset_root, transform=SSDAugmentation(cfg['min_dim'], MEANS))
+        dataset_mean = compute_VOC_dataset_mean(args.dataset_root, args.image_set)
+
+        dataset = VOCDetection(root=args.dataset_root, transform=SSDAugmentation(cfg['min_dim'], VOC_MEANS))
 
     elif args.dataset == 'KAIST':
         if args.dataset_root == COCO_ROOT:
@@ -85,7 +137,10 @@ def train(args):
         if (args.image_set is None) or (not os.path.exists(args.image_set)):
             print("When using kaist, image set must be defined to a valid file: {}".format(args.image_set))
         cfg = kaist
-        dataset = KAISTDetection(root=args.dataset_root, image_set=args.image_set, transform=SSDAugmentation(cfg['min_dim'], MEANS))
+
+        dataset_mean = compute_KAIST_dataset_mean(args.dataset_root, args.image_set)
+
+        dataset = KAISTDetection(root=args.dataset_root, image_set=args.image_set, transform=SSDAugmentation(cfg['min_dim'], tuple(dataset_mean)))
     else:
         print("No dataset specified")
         sys.exit(-1)

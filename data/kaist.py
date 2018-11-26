@@ -66,13 +66,42 @@ class KAISTAnnotationTransform(object):
 
 def file_filter(annofile):
     # print("keeping all images which contain a person")
+    keep_file = False
+
+    person_detected = False
+    people_detected = False
+    person_not_sure_detected = False
+    cyclist_detected = False
+    only_person = False
+    occlusion_detected = False
+    too_small = False
+
     with open(annofile) as f:
         for annoline in f.readlines():  # loop for each line in each annoation
             if annoline.startswith("person "):  # only keep images which contains a "person"
-                return True
-                # self.ids.append(tuple([rootpath] + line.replace('\n', '').replace('\r', '').split('/')))
-                # break
-        return False
+                person_detected = True
+            if annoline.startswith("people"):
+                people_detected =True
+            if annoline.startswith("person?"):
+                person_not_sure_detected = True
+            if annoline.startswith("cyclist"):
+                cyclist_detected = True
+
+            annosplit = annoline.split(" ")
+            if len(annosplit) > 5:
+                #print(annosplit[5])
+                if int(annosplit[5]) != 0:
+                    occlusion_detected = True
+
+                if int(annosplit[4]) < 55:
+                    too_small = True
+
+        if (person_detected) and (not person_not_sure_detected) and (not people_detected) and (not cyclist_detected):
+            only_person = True
+
+        keep_file = only_person and (not occlusion_detected) and (not too_small)
+
+        return keep_file
 
 class KAISTDetection(data.Dataset):
     """KAIST Detection Dataset Object
