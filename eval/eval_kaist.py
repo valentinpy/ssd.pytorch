@@ -5,29 +5,25 @@
 """
 from __future__ import print_function
 import torch
-import torch.nn as nn
 import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
 from data import BaseTransform
 
-from data import KAIST_ROOT, KAISTAnnotationTransform, KAISTDetection
+from data import KAISTAnnotationTransform, KAISTDetection
 from data import KAIST_CLASSES as KAISTlabelmap
 
-import torch.utils.data as data
 from utils.timer import Timer
 
 #TODO VPY import kaist
 #TODO VPY developp annotation parser
 
-from ssd import build_ssd
+from models.ssd import build_ssd
 
 import sys
 import os
-import time
 import argparse
 import numpy as np
 import pickle
-import cv2
 
 
 def str2bool(v):
