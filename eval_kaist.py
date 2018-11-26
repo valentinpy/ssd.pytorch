@@ -3,7 +3,6 @@
     @rbgirshick py-faster-rcnn https://github.com/rbgirshick/py-faster-rcnn
     Licensed under The MIT License [see LICENSE for details]
 """
-
 from __future__ import print_function
 import torch
 import torch.nn as nn
@@ -11,11 +10,14 @@ import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
 from data import BaseTransform
 
-from data import VOC_ROOT, VOCAnnotationTransform, VOCDetection
-from data import VOC_CLASSES as VOClabelmap
+from data import KAIST_ROOT, KAISTAnnotationTransform, KAISTDetection
+from data import KAIST_CLASSES as KAISTlabelmap
 
 import torch.utils.data as data
 from utils.timer import Timer
+
+#TODO VPY import kaist
+#TODO VPY developp annotation parser
 
 from ssd import build_ssd
 
@@ -26,7 +28,6 @@ import argparse
 import numpy as np
 import pickle
 import cv2
-import xml.etree.ElementTree as ET
 
 
 def str2bool(v):
@@ -36,8 +37,10 @@ def arg_parser():
 
     parser = argparse.ArgumentParser(
         description='Single Shot MultiBox Detector Evaluation')
-    parser.add_argument('--dataset_type', default='VOC', choices=['VOC', 'COCO'],
-                        type=str, help='VOC, COCO')
+    parser.add_argument('--dataset_type', default='VOC', choices=['KAIST'],
+                        type=str, help='KAIST (requires image_set)')
+    parser.add_argument('--image_set', default=None,
+                        help='[KAIST] Imageset')
     parser.add_argument('--trained_model',
                         default='weights/ssd300_mAP_77.43_v2.pth', type=str,
                         help='Trained state_dict file path to open')
@@ -45,33 +48,43 @@ def arg_parser():
                         help='Detection confidence threshold')
     parser.add_argument('--cuda', default=True, type=str2bool,
                         help='Use cuda to train model')
-    parser.add_argument('--dataset_root', default=VOC_ROOT,
+    parser.add_argument('--dataset_root', default=None,
                         help='Location of dataset root directory')
 
     args = parser.parse_args()
 
     return args
 
+def parse_rec_kaist(filename):
+    if not os.path.exists(filename):
+        print("annotation file not found: {}".format(filename))
+        sys.exit(-1)
 
-def parse_rec(filename):
-    """ Parse a PASCAL VOC xml file """
-    tree = ET.parse(filename)
-    objects = []
-    for obj in tree.findall('object'):
-        obj_struct = {}
-        obj_struct['name'] = obj.find('name').text
-        obj_struct['pose'] = obj.find('pose').text
-        obj_struct['truncated'] = int(obj.find('truncated').text)
-        obj_struct['difficult'] = int(obj.find('difficult').text)
-        bbox = obj.find('bndbox')
-        obj_struct['bbox'] = [int(bbox.find('xmin').text) - 1,
-                              int(bbox.find('ymin').text) - 1,
-                              int(bbox.find('xmax').text) - 1,
-                              int(bbox.find('ymax').text) - 1]
-        objects.append(obj_struct)
+    with open(filename) as f:  # open annoatation file and read all lines
+        objects = []
+        for line in f.readlines():
+            if line.startswith("person "):  # only one class supported: "person"
 
+                line = line.split(" ")
+                line[1] = float(line[1])  # convert coordinates to float: xmin, ymin, width, height
+                line[2] = float(line[2])
+                line[3] = float(line[3])
+                line[4] = float(line[4])
+
+                bbox = [(line[1]), (line[2]), (line[1] + line[3]), (line[2] + line[4])]  # [xmin, ymin, xax, ymax], all coordinates are [0;width or height] => not divided by witdh or height
+
+                obj_struct = {}
+                obj_struct['name'] = line[0]
+                #obj_struct['pose'] = "n/d"
+                #obj_struct['truncated'] = "n/d"
+                #obj_struct['difficult'] = "n/d"
+                obj_struct['bbox'] = [int(line[1]),
+                                      int(line[2]),
+                                      int(line[1]) + int(line[3]),
+                                      int(line[2]) + int(line[4])]
+                objects.append(obj_struct)
     return objects
-
+    # raise NotImplementedError
 
 def get_output_dir(name, phase):
     """Return the directory where experimental artifacts are placed.
@@ -85,20 +98,19 @@ def get_output_dir(name, phase):
     return filedir
 
 
-def get_voc_results_file_template(image_set):
+def get_kaist_results_file_template(image_set):
     # VOCdevkit/VOC2007/results/det_test_aeroplane.txt
     filename = 'det_' + image_set + '_%s.txt'
-    filedir = os.path.join(devkit_path, 'results')
+    filedir = os.path.join(args.dataset_root, 'results')
     if not os.path.exists(filedir):
         os.makedirs(filedir)
     path = os.path.join(filedir, filename)
     return path
 
-
-def write_voc_results_file(all_boxes, dataset):
+def write_kaist_results_file(all_boxes, dataset):
     for cls_ind, cls in enumerate(labelmap):
-        print('Writing {:s} VOC results file'.format(cls))
-        filename = get_voc_results_file_template(set_type) % (cls)
+        print('Writing {:s} KAIST results file'.format(cls))
+        filename = get_kaist_results_file_template(set_type) % (cls)
         with open(filename, 'wt') as f:
             for im_ind, index in enumerate(dataset.ids):
                 dets = all_boxes[cls_ind+1][im_ind]
@@ -106,14 +118,13 @@ def write_voc_results_file(all_boxes, dataset):
                     continue
                 # the VOCdevkit expects 1-based indices
                 for k in range(dets.shape[0]):
-                    f.write('{:s} {:.3f} {:.1f} {:.1f} {:.1f} {:.1f}\n'.
-                            format(index[1], dets[k, -1],
+                    f.write('{:s}/{:s}/{:s} {:.3f} {:.1f} {:.1f} {:.1f} {:.1f}\n'.
+                            format(index[1], index[2], index[3], dets[k, -1],
                                    dets[k, 0] + 1, dets[k, 1] + 1,
                                    dets[k, 2] + 1, dets[k, 3] + 1))
 
-
-def do_python_eval_voc(output_dir='output', use_07=True):
-    cachedir = os.path.join(devkit_path, 'annotations_cache')
+def do_python_eval_kaist(output_dir='output', use_07=True):
+    cachedir = os.path.join(args.dataset_root, 'annotations_cache')
     aps = []
     # The PASCAL VOC metric changed in 2010
     use_07_metric = use_07
@@ -121,10 +132,8 @@ def do_python_eval_voc(output_dir='output', use_07=True):
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
     for i, cls in enumerate(labelmap):
-        filepath = get_voc_results_file_template(set_type)
-        rec, prec, ap = voc_eval(
-           filepath, annopath, imgsetpath.format(set_type), cls, cachedir,
-           ovthresh=0.5, use_07_metric=use_07_metric)
+        filepath = get_kaist_results_file_template(set_type)
+        rec, prec, ap = kaist_eval(filepath, annopath, args.image_set, cls, cachedir, ovthresh=0.5, use_07_metric=use_07_metric)
         aps += [ap]
         print('AP for {} = {:.4f}'.format(cls, ap))
         with open(os.path.join(output_dir, cls + '_pr.pkl'), 'wb') as f:
@@ -176,8 +185,7 @@ def voc_ap(rec, prec, use_07_metric=True):
         ap = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
     return ap
 
-
-def voc_eval(detpath, annopath, imagesetfile, classname, cachedir, ovthresh=0.5, use_07_metric=True):
+def kaist_eval(detpath, annopath, imagesetfile, classname, cachedir, ovthresh=0.5, use_07_metric=True):
     """
     rec, prec, ap = voc_eval(detpath, annopath, imagesetfile, classname, [ovthresh], [use_07_metric])
 
@@ -200,19 +208,23 @@ def voc_eval(detpath, annopath, imagesetfile, classname, cachedir, ovthresh=0.5,
     # first load gt
     if not os.path.isdir(cachedir):
         os.mkdir(cachedir)
+
     cachefile = os.path.join(cachedir, 'annots.pkl')
+
     # read list of images
     with open(imagesetfile, 'r') as f:
         lines = f.readlines()
     imagenames = [x.strip() for x in lines]
+
     if not os.path.isfile(cachefile):
         # load annots
         recs = {}
         for i, imagename in enumerate(imagenames):
-            recs[imagename] = parse_rec(annopath % (imagename))
+            # imagename = imagename.split("/")
+            recs[imagename] = parse_rec_kaist(annopath % tuple(imagename.split("/")))
             if i % 100 == 0:
-                print('Reading annotation for {:d}/{:d}'.format(
-                   i + 1, len(imagenames)))
+                print('Reading annotation for {:d}/{:d}'.format(i + 1, len(imagenames)))
+
         # save
         print('Saving cached annotations to {:s}'.format(cachefile))
         with open(cachefile, 'wb') as f:
@@ -228,7 +240,8 @@ def voc_eval(detpath, annopath, imagesetfile, classname, cachedir, ovthresh=0.5,
     for imagename in imagenames:
         R = [obj for obj in recs[imagename] if obj['name'] == classname]
         bbox = np.array([x['bbox'] for x in R])
-        difficult = np.array([x['difficult'] for x in R]).astype(np.bool)
+        #difficult = np.array([x['difficult'] for x in R]).astype(np.bool)
+        difficult = np.array([False for x in R]).astype(np.bool)
         det = [False] * len(R)
         npos = npos + sum(~difficult)
         class_recs[imagename] = {'bbox': bbox,
@@ -303,7 +316,6 @@ def voc_eval(detpath, annopath, imagesetfile, classname, cachedir, ovthresh=0.5,
 
     return rec, prec, ap
 
-
 def test_net(net, cuda, dataset, transform, im_size=300, thresh=0.05, dataset_type=None):
     num_images = len(dataset)
     # all detections are collected into:
@@ -316,13 +328,13 @@ def test_net(net, cuda, dataset, transform, im_size=300, thresh=0.05, dataset_ty
     _t = {'im_detect': Timer(), 'misc': Timer()}
 
     # create eval result folder
-    output_dir = get_output_dir(dataset.name + '_eval_ssd300_120000', set_type)
+    output_dir = get_output_dir(dataset.name + '_eval_ssd300_', set_type)
     det_file = os.path.join(output_dir, 'detections.pkl')
 
     # loop for all test images
-    # for i in range(num_images): #TODO VPY debug
-    for i in range(10):  # TODO VPY debug
-        print("!! Debug mode!! not all images are tested")
+    for i in range(num_images): #TODO VPY debug
+    #for i in range(10):  # TODO VPY debug
+        #print("!! Debug mode!! not all images are tested")
 
         # get image + annotations + dimensions
         im, gt, h, w = dataset.pull_item(i)
@@ -352,7 +364,8 @@ def test_net(net, cuda, dataset, transform, im_size=300, thresh=0.05, dataset_ty
                                                                  copy=False)
             all_boxes[j][i] = cls_dets
 
-        print('im_detect: {:d}/{:d} {:.3f}s'.format(i + 1,
+        if (i%100 == 0):
+            print('im_detect: {:d}/{:d} {:.3f}s'.format(i + 1,
                                                     num_images, detect_time))
 
     with open(det_file, 'wb') as f:
@@ -363,9 +376,11 @@ def test_net(net, cuda, dataset, transform, im_size=300, thresh=0.05, dataset_ty
 
 
 def evaluate_detections(box_list, output_dir, dataset, dataset_type):
-    if dataset_type == "VOC":
-        write_voc_results_file(box_list, dataset)
-        do_python_eval_voc(output_dir)
+    if dataset_type == "KAIST":
+        write_kaist_results_file(box_list, dataset)
+        do_python_eval_kaist(output_dir)
+        # raise NotImplementedError
+        #TODO VPY implement
     else:
         print("Dataset not supported")
         raise NotImplementedError
@@ -387,13 +402,17 @@ if __name__ == '__main__':
     else:
         torch.set_default_tensor_type('torch.FloatTensor')
 
-    if args.dataset_type == "VOC":
-        annopath = os.path.join(args.dataset_root, 'VOC2007', 'Annotations', '%s.xml')
-        imgpath = os.path.join(args.dataset_root, 'VOC2007', 'JPEGImages', '%s.jpg')
-        imgsetpath = os.path.join(args.dataset_root, 'VOC2007', 'ImageSets', 'Main', '{:s}.txt')
-        YEAR = '2007'
-        devkit_path = args.dataset_root + 'VOC' + YEAR
-        labelmap = VOClabelmap
+
+
+    if args.dataset_type == "KAIST":
+        annopath = os.path.join(args.dataset_root, 'rgbt-ped-detection/data/kaist-rgbt/annotations/', '%s', '%s', '%s.txt')
+        imgpath = os.path.join(args.dataset_root, 'rgbt-ped-detection/data/kaist-rgbt/', '%s', 'images', '%s', '%s', 'visible', '%s.jpg')
+        imgsetpath = os.path.join(args.dataset_root, 'rgbt-ped-detection/data/kaist-rgbt/imageSets', '%s.txt')
+        labelmap = KAISTlabelmap
+        # img_lwir_root_path = os.path.join(args.dataset_root, 'rgbt-ped-detection/data/kaist-rgbt/', '%s', 'images', '%s', '%s', 'lwir', '%s.jpg')
+        #YEAR = None
+        #devkit_path = None
+        #raise NotImplementedError
     else:
         print("Dataset not implemented")
         raise NotImplementedError
@@ -409,8 +428,8 @@ if __name__ == '__main__':
     print('Finished loading model!')
     # load data
 
-    if args.dataset_type == "VOC":
-        dataset = VOCDetection(root=args.dataset_root, image_sets=[('2007', set_type)], transform=BaseTransform(300, dataset_mean), target_transform=VOCAnnotationTransform())
+    if args.dataset_type == "KAIST":
+        dataset = KAISTDetection(root=args.dataset_root,image_set=args.image_set, transform=BaseTransform(300, dataset_mean), target_transform=KAISTAnnotationTransform(), dataset_name="KAIST")
     else:
         print("dataset not supported: {}".format(args.dataset_type))
         sys.exit(-1)
@@ -418,6 +437,7 @@ if __name__ == '__main__':
     if args.cuda:
         net = net.cuda()
         cudnn.benchmark = True
+
     # evaluation
     test_net(net=net, cuda=args.cuda, dataset=dataset,
              transform=BaseTransform(net.size, dataset_mean), im_size=300,
