@@ -64,6 +64,16 @@ class KAISTAnnotationTransform(object):
 
         return res #return all annoations: [[x1min, y1min, x1max, y1max, label_idx=0], [...] ]
 
+def file_filter(annofile):
+    # print("keeping all images which contain a person")
+    with open(annofile) as f:
+        for annoline in f.readlines():  # loop for each line in each annoation
+            if annoline.startswith("person "):  # only keep images which contains a "person"
+                return True
+                # self.ids.append(tuple([rootpath] + line.replace('\n', '').replace('\r', '').split('/')))
+                # break
+        return False
+
 class KAISTDetection(data.Dataset):
     """KAIST Detection Dataset Object
 
@@ -102,14 +112,12 @@ class KAISTDetection(data.Dataset):
 
         self.ids = list()
 
+        # open imageSet file and add files which interrest us in the imageList (ids)
         rootpath = osp.join(self.root, 'rgbt-ped-detection/data/kaist-rgbt/')
         for line in open(osp.join(rootpath, 'imageSets', image_set)): # read imageSet file and loop for each entry
             annofile = self._annopath % tuple([rootpath] + line.replace('\n', '').replace('\r', '').split('/')) #get annotation file for the current image
-            with open(annofile) as f:
-                for annoline in f.readlines(): #loop for each line in each annoation
-                    if annoline.startswith("person "): # only keep images which contains a "person"
-                        self.ids.append(tuple([rootpath] + line.replace('\n', '').replace('\r', '').split('/')))
-                        break
+            if file_filter(annofile):
+                self.ids.append(tuple([rootpath] + line.replace('\n', '').replace('\r', '').split('/')))
 
     def __getitem__(self, index):
         im, gt, h, w = self.pull_item(index)
