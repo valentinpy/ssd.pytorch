@@ -190,3 +190,33 @@ class KAISTDetection(data.Dataset):
             tensorized version of img, squeezed
         '''
         return torch.Tensor(self.pull_image(index)).unsqueeze_(0)
+
+def parse_rec_kaist(filename):
+    if not os.path.exists(filename):
+        print("annotation file not found: {}".format(filename))
+        sys.exit(-1)
+
+    with open(filename) as f:  # open annoatation file and read all lines
+        objects = []
+        for line in f.readlines():
+            if line.startswith("person "):  # only one class supported: "person"
+
+                line = line.split(" ")
+                line[1] = float(line[1])  # convert coordinates to float: xmin, ymin, width, height
+                line[2] = float(line[2])
+                line[3] = float(line[3])
+                line[4] = float(line[4])
+
+                bbox = [(line[1]), (line[2]), (line[1] + line[3]), (line[2] + line[4])]  # [xmin, ymin, xax, ymax], all coordinates are [0;width or height] => not divided by witdh or height
+
+                obj_struct = {}
+                obj_struct['name'] = line[0]
+                #obj_struct['pose'] = "n/d"
+                #obj_struct['truncated'] = "n/d"
+                #obj_struct['difficult'] = "n/d"
+                obj_struct['bbox'] = [int(line[1]),
+                                      int(line[2]),
+                                      int(line[1]) + int(line[3]),
+                                      int(line[2]) + int(line[4])]
+                objects.append(obj_struct)
+    return objects

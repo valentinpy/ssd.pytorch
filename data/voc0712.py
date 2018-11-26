@@ -6,6 +6,7 @@ https://github.com/fmassa/vision/blob/voc_dataset/torchvision/datasets/voc.py
 Updated by: Ellis Brown, Max deGroot
 """
 from .config import HOME
+import os
 import os.path as osp
 import sys
 import torch
@@ -182,3 +183,22 @@ class VOCDetection(data.Dataset):
             tensorized version of img, squeezed
         '''
         return torch.Tensor(self.pull_image(index)).unsqueeze_(0)
+
+def parse_rec_voc(filename):
+    """ Parse a PASCAL VOC xml file """
+    tree = ET.parse(filename)
+    objects = []
+    for obj in tree.findall('object'):
+        obj_struct = {}
+        obj_struct['name'] = obj.find('name').text
+        obj_struct['pose'] = obj.find('pose').text
+        obj_struct['truncated'] = int(obj.find('truncated').text)
+        obj_struct['difficult'] = int(obj.find('difficult').text)
+        bbox = obj.find('bndbox')
+        obj_struct['bbox'] = [int(bbox.find('xmin').text) - 1,
+                              int(bbox.find('ymin').text) - 1,
+                              int(bbox.find('xmax').text) - 1,
+                              int(bbox.find('ymax').text) - 1]
+        objects.append(obj_struct)
+
+    return objects
