@@ -92,13 +92,12 @@ ENV/
 .remote-sync.json
 
 # weights
-weights/
+#weights/
 
 #DS_Store
 .DS_Store
 
 # dev stuff
-eval/
 eval.ipynb
 dev.ipynb
 .vscode/
@@ -106,8 +105,8 @@ dev.ipynb
 # not ready
 videos/
 templates/
-data/ssd_dataloader.py
-data/datasets/
+#data/ssd_dataloader.py
+#data/datasets/
 doc/visualize.py
 read_results.py
 ssd300_120000/
@@ -122,8 +121,8 @@ checkpoints/
 .idea/
 
 # temp checkout soln
-data/datasets/
-data/ssd_dataloader.py
+#data/datasets/
+#data/ssd_dataloader.py
 
 # pylint
 .pylintrc
