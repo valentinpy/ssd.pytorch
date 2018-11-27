@@ -396,6 +396,8 @@ if __name__ == '__main__':
     if args.dataset_type == "VOC":
         dataset = VOCDetection(root=args.dataset_root, image_sets=[('2007', set_type)], transform=BaseTransform(300, dataset_mean), target_transform=VOCAnnotationTransform(), dataset_name="VOC")
     elif args.dataset_type == "KAIST":
+        from data.kaist import compute_KAIST_dataset_mean
+        dataset_mean = tuple(compute_KAIST_dataset_mean(args.dataset_root, args.image_set))
         dataset = KAISTDetection(root=args.dataset_root,image_set=args.image_set, transform=BaseTransform(300, dataset_mean), target_transform=KAISTAnnotationTransform(), dataset_name="KAIST")
     else:
         print("dataset not supported: {}".format(args.dataset_type))
