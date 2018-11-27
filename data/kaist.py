@@ -257,3 +257,28 @@ def parse_rec_kaist(filename):
                                       int(line[2]) + int(line[4])]
                 objects.append(obj_struct)
     return objects
+
+def compute_KAIST_dataset_mean(dataset_root, image_set):
+    print("compute images mean")
+
+    images_mean = np.zeros((3), dtype=np.float64)  # [0,0,0]
+    #
+    # # create batch iterator
+    dataset_mean = KAISTDetection(root=dataset_root, image_set=image_set, transform=None)
+    data_loader_mean = data.DataLoader(dataset_mean, 1, num_workers=1, shuffle=True, pin_memory=True)
+    batch_iterator = iter(data_loader_mean)
+    i = 0
+    for i in range(len(dataset_mean)):  # while True:# iteration in range(args.start_iter, cfg['max_iter']):
+        # for i in range(100):
+        #     print("Debug: not all data!!!!!")
+        try:
+            # load train data
+            image, _ = next(batch_iterator)
+            images_mean += image[0].permute(1, 2, 0).numpy().mean(axis=(0, 1))
+        except StopIteration:
+            break
+
+    images_mean = images_mean / i
+    print("image mean is: {}".format(images_mean))
+
+    return images_mean
