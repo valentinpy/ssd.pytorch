@@ -13,10 +13,11 @@ import torch.nn.init as init
 import torch.utils.data as data
 import argparse
 import datetime
+import cv2
+from utils.misc import str2bool
 
+from data.kaist import compute_KAIST_dataset_mean
 
-def str2bool(v):
-    return v.lower() in ("yes", "true", "t", "1")
 
 def arg_parser():
     parser = argparse.ArgumentParser(description='Single Shot MultiBox Detector Training With Pytorch')
@@ -58,31 +59,40 @@ def arg_parser():
     return args
 
 
-def compute_KAIST_dataset_mean(dataset_root, image_set):
-    print("compute images mean")
-    images_mean = np.zeros((3), dtype=np.float64)  # [0,0,0]
-    #
-    # # create batch iterator
-    dataset_mean = KAISTDetection(root=dataset_root, image_set=image_set, transform=None)
-    data_loader_mean = data.DataLoader(dataset_mean, 1, num_workers=1, shuffle=False, collate_fn=detection_collate, pin_memory=True)
-    batch_iterator = iter(data_loader_mean)
+def show_dataset(dataset_root, image_set):
+    print("showing dataset")
+
+    fourcc = cv2.VideoWriter_fourcc('M', 'P', 'E', 'G')
+    writer = cv2.VideoWriter('dataset.avi', fourcc, 30, (2048, 1024), isColor=True)
+
+    dataset = KAISTDetection(root=dataset_root, image_set=image_set, transform=None)
+    data_loader = data.DataLoader(dataset, 1, num_workers=1, shuffle=True, collate_fn=detection_collate, pin_memory=True)
+    batch_iterator = iter(data_loader)
     i = 0
-    for i in range(len(dataset_mean)):  # while True:# iteration in range(args.start_iter, cfg['max_iter']):
-        # for i in range(100):
-        #     print("Debug: not all data!!!!!")
+    for i in range(len(dataset)):  # while True:# iteration in range(args.start_iter, cfg['max_iter']):
         try:
             # load train data
-            image, _ = next(batch_iterator)
-            images_mean += image[0].permute(1, 2, 0).numpy().mean(axis=(0, 1))
+            image, annotations = next(batch_iterator)
+            image = image[0].permute(1, 2, 0).numpy().astype(np.uint8).copy()
+            width = image.shape[1]
+            height = image.shape[0]
+
+            for annotation in annotations:
+                annotation = (annotation.numpy())[0]
+                cv2.rectangle(image,
+                              (int(annotation[0] * width), int(annotation[1] * height)),
+                              (int(annotation[2] * width), int(annotation[3] * height)),
+                              (0, 255, 0),
+                              1
+                              )
+            cv2.imshow('decoded image', image)
+            cv2.waitKey(1)
+            writer.write(image)
+            print(image.mean(axis=(0, 1)))
+            time.sleep(1)
         except StopIteration:
             break
-    #         batch_iterator = iter(data_loader)
-    #         images, targets = next(batch_iterator)
-    # print(i)
-    # print("pre image mean is: {}".format(image_mean))
-    images_mean = images_mean / i
-    print("image mean is: {}".format(images_mean))
-    return images_mean
+    writer.release()
 
 def compute_VOC_dataset_mean(dataset_root, image_set):
     print("compute images mean")
@@ -138,9 +148,10 @@ def train(args):
             print("When using kaist, image set must be defined to a valid file: {}".format(args.image_set))
         cfg = kaist
 
-        dataset_mean = compute_KAIST_dataset_mean(args.dataset_root, args.image_set)
-
-        dataset = KAISTDetection(root=args.dataset_root, image_set=args.image_set, transform=SSDAugmentation(cfg['min_dim'], tuple(dataset_mean)))
+        # show_dataset(args.dataset_root, args.image_set)
+        # dataset_mean = compute_KAIST_dataset_mean(args.dataset_root, args.image_set)
+        #dataset = KAISTDetection(root=args.dataset_root, image_set=args.image_set, transform=SSDAugmentation(cfg['min_dim'], tuple(dataset_mean)))
+        dataset = KAISTDetection(root=args.dataset_root, image_set=args.image_set, transform=SSDAugmentation(cfg['min_dim'], VOC_MEANS))
     else:
         print("No dataset specified")
         sys.exit(-1)
