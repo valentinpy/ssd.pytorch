@@ -54,18 +54,22 @@ def arg_parser():
                         help='Use visdom for loss visualization')
     parser.add_argument('--save_folder', default='checkpoints',
                         help='Directory for saving checkpoint models')
+    parser.add_argument('--image_fusion', default=-1, type=int,
+                        help='[KAIST]: type of image fusion: [0: visible], [1: lwir] [...]') #TODO VPY update when required
+    parser.add_argument('--show_dataset', default=False, type=str2bool,
+                        help='Show every image used ?')
     args = parser.parse_args()
 
     return args
 
 
-def show_dataset(dataset_root, image_set):
+def show_dataset(dataset_root, image_set, image_fusion):
     print("showing dataset")
 
     fourcc = cv2.VideoWriter_fourcc('M', 'P', 'E', 'G')
     writer = cv2.VideoWriter('dataset.avi', fourcc, 30, (2048, 1024), isColor=True)
 
-    dataset = KAISTDetection(root=dataset_root, image_set=image_set, transform=None)
+    dataset = KAISTDetection(root=dataset_root, image_set=image_set, transform=None, image_fusion=image_fusion)
     data_loader = data.DataLoader(dataset, 1, num_workers=1, shuffle=True, collate_fn=detection_collate, pin_memory=True)
     batch_iterator = iter(data_loader)
     i = 0
@@ -148,10 +152,11 @@ def train(args):
             print("When using kaist, image set must be defined to a valid file: {}".format(args.image_set))
         cfg = kaist
 
-        # show_dataset(args.dataset_root, args.image_set)
+        if args.show_dataset == True:
+            show_dataset(args.dataset_root, args.image_set, args.image_fusion)
         # dataset_mean = compute_KAIST_dataset_mean(args.dataset_root, args.image_set)
         #dataset = KAISTDetection(root=args.dataset_root, image_set=args.image_set, transform=SSDAugmentation(cfg['min_dim'], tuple(dataset_mean)))
-        dataset = KAISTDetection(root=args.dataset_root, image_set=args.image_set, transform=SSDAugmentation(cfg['min_dim'], VOC_MEANS))
+        dataset = KAISTDetection(root=args.dataset_root, image_set=args.image_set, transform=SSDAugmentation(cfg['min_dim'], VOC_MEANS), image_fusion=args.image_fusion)
     else:
         print("No dataset specified")
         sys.exit(-1)
@@ -358,4 +363,9 @@ if __name__ == '__main__':
         print("save frequency must be > 0")
         sys.exit(-1)
 
+    if args.dataset == "KAIST":
+        if args.image_fusion == -1:
+            print("image fusion must be specified")
+            sys.exit(-1)
+        print("Image fusion value: {}".format(args.image_fusion))
     train(args)
