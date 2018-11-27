@@ -123,12 +123,14 @@ class KAISTDetection(data.Dataset):
             (eg: take in caption string, return tensor of word indices). Default is: KAISTAnnotationTransform
         dataset_name (string, optional): which dataset to load
             (default: 'KAIST')
+        image_fusion (int): type of fusion used: [0: visible] [1: LWIR] [...]
     """
 
     def __init__(self, root,
                  image_set='VPY-train-day.txt',
                  transform=None, target_transform=KAISTAnnotationTransform(),
-                 dataset_name='KAIST'):
+                 dataset_name='KAIST',
+                 image_fusion=0):
         print("{}: ImageSet used is : {}".format(dataset_name, image_set))
         self.root = root
         self.image_set = image_set
@@ -138,7 +140,7 @@ class KAISTDetection(data.Dataset):
         self._annopath = osp.join('%s', 'annotations', '%s', '%s', '%s.txt')
         self._img_vis_root_path = osp.join('%s', 'images', '%s', '%s', 'visible', '%s.jpg')
         self._img_lwir_root_path = osp.join('%s', 'images', '%s', '%s', 'lwir', '%s.jpg')
-
+        self.image_fusion = image_fusion
         self.ids = list()
 
         # open imageSet file and add files which interrest us in the imageList (ids)
@@ -162,7 +164,17 @@ class KAISTDetection(data.Dataset):
 
         #TODO VPY parse annotations => target
         target = self._annopath % img_id
-        img = cv2.imread(self._img_vis_root_path % img_id)
+
+        if self.image_fusion == 0:
+            img = cv2.imread(self._img_vis_root_path % img_id)
+
+        elif self.image_fusion == 1:
+            img = cv2.imread(self._img_lwir_root_path % img_id)
+            img = cv2.bitwise_not(img)
+        else:
+            print("image fusion not handled")
+            sys.exit(-1)
+
         height, width, channels = img.shape
 
         if self.target_transform is not None:
