@@ -64,45 +64,6 @@ class KAISTAnnotationTransform(object):
 
         return res #return all annoations: [[x1min, y1min, x1max, y1max, label_idx=0], [...] ]
 
-def file_filter(annofile):
-    # print("keeping all images which contain a person")
-    keep_file = False
-
-    person_detected = False
-    people_detected = False
-    person_not_sure_detected = False
-    cyclist_detected = False
-    only_person = False
-    occlusion_detected = False
-    too_small = False
-
-    with open(annofile) as f:
-        for annoline in f.readlines():  # loop for each line in each annoation
-            if annoline.startswith("person "):  # only keep images which contains a "person"
-                person_detected = True
-            if annoline.startswith("people"):
-                people_detected =True
-            if annoline.startswith("person?"):
-                person_not_sure_detected = True
-            if annoline.startswith("cyclist"):
-                cyclist_detected = True
-
-            annosplit = annoline.split(" ")
-            if len(annosplit) > 5:
-                #print(annosplit[5])
-                if int(annosplit[5]) != 0:
-                    occlusion_detected = True
-
-                if int(annosplit[4]) < 55:
-                    too_small = True
-
-        if (person_detected) and (not person_not_sure_detected) and (not people_detected) and (not cyclist_detected):
-            only_person = True
-
-        keep_file = only_person and (not occlusion_detected) and (not too_small)
-
-        return keep_file
-
 class KAISTDetection(data.Dataset):
     """KAIST Detection Dataset Object
 
@@ -146,8 +107,8 @@ class KAISTDetection(data.Dataset):
         # open imageSet file and add files which interrest us in the imageList (ids)
         rootpath = osp.join(self.root, 'rgbt-ped-detection/data/kaist-rgbt/')
         for line in open(osp.join(rootpath, 'imageSets', image_set)): # read imageSet file and loop for each entry
-            annofile = self._annopath % tuple([rootpath] + line.replace('\n', '').replace('\r', '').split('/')) #get annotation file for the current image
-            if file_filter(annofile):
+            if not line.startswith("#"): # remove comments
+                annofile = self._annopath % tuple([rootpath] + line.replace('\n', '').replace('\r', '').split('/')) #get annotation file for the current image
                 self.ids.append(tuple([rootpath] + line.replace('\n', '').replace('\r', '').split('/')))
 
     def __getitem__(self, index):
@@ -170,7 +131,7 @@ class KAISTDetection(data.Dataset):
 
         elif self.image_fusion == 1:
             img = cv2.imread(self._img_lwir_root_path % img_id)
-            img = cv2.bitwise_not(img)
+            img = cv2.bitwise_not(img)  #TODO VPY: use a tranform function
         else:
             print("image fusion not handled")
             sys.exit(-1)
@@ -205,8 +166,21 @@ class KAISTDetection(data.Dataset):
         Return:
             PIL img
         '''
+
         img_id = self.ids[index]
-        return cv2.imread(self._img_vis_root_path % img_id, cv2.IMREAD_COLOR)
+        if self.image_fusion == 0:
+            img = cv2.imread(self._img_vis_root_path % img_id)
+
+        elif self.image_fusion == 1:
+            img = cv2.imread(self._img_lwir_root_path % img_id)
+            img = cv2.bitwise_not(img)  #TODO VPY: use a tranform function
+        else:
+            print("image fusion not handled")
+            sys.exit(-1)
+
+        return img
+
+        # return cv2.imread(self._img_vis_root_path % img_id, cv2.IMREAD_COLOR)
 
     def pull_anno(self, index):
         '''Returns the original annotation of image at index
@@ -220,12 +194,14 @@ class KAISTDetection(data.Dataset):
             list:  (img_id, [bbox coords, label_id])
                 eg: ('001718', [96, 13, 438, 332, 12])
         '''
-        raise NotImplementedError
-        # TODO VPY implement
-        # img_id = self.ids[index]
-        #anno = ET.parse(self._annopath % img_id).getroot()
-        #gt = self.target_transform(anno, 1, 1)
-        #return img_id[1], gt
+        img_id = self.ids[index]
+        target = self._annopath % img_id
+        if self.target_transform is not None:
+            gt = self.target_transform(target, 1, 1) # TODO VPY OK ??
+        else:
+            print("no target transform function!")
+            sys.exit(-1)
+        return img_id[1], gt
 
     def pull_tensor(self, index):
         '''Returns the original image at an index in tensor form
