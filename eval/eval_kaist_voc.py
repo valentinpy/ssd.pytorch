@@ -121,10 +121,7 @@ def voc_eval(gt_class_recs, det_BB, det_image_ids, det_confidence, ovthresh=0.5,
 
 def forward_pass(net, cuda, dataset):
     num_images = len(dataset)
-    # all detections are collected into:
-    #    all_boxes[cls][image] = N x 5 array of detections in
-    #    (x1, y1, x2, y2, score)
-    all_boxes = [[[] for _ in range(num_images)] for _ in range(len(labelmap)+1)]
+
     det_image_ids = [[] for _ in range(len(labelmap)+1)]
     det_BB = [np.empty((0,4)) for _ in range(len(labelmap)+1)]
     det_confidence = [np.empty((0)) for _ in range(len(labelmap) + 1)]
@@ -160,8 +157,6 @@ def forward_pass(net, cuda, dataset):
             boxes[:, 1] *= h
             boxes[:, 3] *= h
             scores = dets[:, 0].cpu().numpy()
-            cls_dets = np.hstack((boxes.cpu().numpy(), scores[:, np.newaxis])).astype(np.float32, copy=False)
-            all_boxes[j][i] = cls_dets
 
             img_id = dataset.pull_img_id(i)
             det_image_ids[j] += [img_id for _ in range(dets.size(0))]
@@ -173,7 +168,7 @@ def forward_pass(net, cuda, dataset):
         if (i % 100 == 0):
             print('im_detect: {:d}/{:d}. Detection time per image: {:.3f}s'.format(i, num_images, detect_time))
 
-    return all_boxes, det_BB, det_image_ids, det_confidence
+    return det_image_ids, det_BB, det_confidence
 
 def get_GT(dataset, labelmap):
     num_images = len(dataset)
@@ -272,11 +267,10 @@ if __name__ == '__main__':
     ground_truth = get_GT(dataset, labelmap)
 
     print("Forward pass")
-    detections, det_BB, det_image_ids, det_confidence = forward_pass(net=net, cuda=args.cuda, dataset=dataset)
+    det_image_ids, det_BB, det_confidence = forward_pass(net=net, cuda=args.cuda, dataset=dataset)
 
     # evaluation
     print('Evaluating detections')
     mAP, ap_dict = eval(ground_truth, det_BB, det_image_ids, det_confidence, labelmap=labelmap, use_voc07_metric=True)
     print("mAP: {}".format(mAP))
     print("AP: {}".format(ap_dict))
-
