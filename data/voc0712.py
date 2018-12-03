@@ -154,6 +154,10 @@ class VOCDetection(data.Dataset):
         img_id = self.ids[index]
         return cv2.imread(self._imgpath % img_id, cv2.IMREAD_COLOR)
 
+    def pull_img_id(self, index):
+        img_id = self.ids[index]
+        return img_id[1]
+
     def pull_anno(self, index):
         '''Returns the original annotation of image at index
 
@@ -169,7 +173,9 @@ class VOCDetection(data.Dataset):
         img_id = self.ids[index]
         anno = ET.parse(self._annopath % img_id).getroot()
         gt = self.target_transform(anno, 1, 1)
-        return img_id[1], gt
+
+        detailed_gt = parse_rec_voc(self._annopath % img_id)
+        return img_id[1], gt, detailed_gt
 
     def pull_tensor(self, index):
         '''Returns the original image at an index in tensor form

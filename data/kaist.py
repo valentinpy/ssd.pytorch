@@ -109,7 +109,7 @@ class KAISTDetection(data.Dataset):
         for line in open(osp.join(rootpath, 'imageSets', image_set)): # read imageSet file and loop for each entry
             if not line.startswith("#"): # remove comments
                 annofile = self._annopath % tuple([rootpath] + line.replace('\n', '').replace('\r', '').split('/')) #get annotation file for the current image
-                self.ids.append(tuple([rootpath] + line.replace('\n', '').replace('\r', '').split('/')))
+                self.ids.append(tuple([rootpath] + line.replace('\n', '').replace('\r', '').split('/') + [line.replace('\n', '').replace('\r', '')]))
 
     def __getitem__(self, index):
         im, gt, h, w = self.pull_item(index)
@@ -124,13 +124,13 @@ class KAISTDetection(data.Dataset):
         img_id = self.ids[index]
 
         #TODO VPY parse annotations => target
-        target = self._annopath % img_id
+        target = self._annopath % img_id[0:4]
 
         if self.image_fusion == 0:
-            img = cv2.imread(self._img_vis_root_path % img_id)
+            img = cv2.imread(self._img_vis_root_path % img_id[0:4])
 
         elif self.image_fusion == 1:
-            img = cv2.imread(self._img_lwir_root_path % img_id)
+            img = cv2.imread(self._img_lwir_root_path % img_id[0:4])
             img = cv2.bitwise_not(img)  #TODO VPY: use a tranform function
         else:
             print("image fusion not handled")
@@ -182,6 +182,10 @@ class KAISTDetection(data.Dataset):
 
         # return cv2.imread(self._img_vis_root_path % img_id, cv2.IMREAD_COLOR)
 
+    def pull_img_id(self, index):
+        img_id = self.ids[index]
+        return img_id[4]
+
     def pull_anno(self, index):
         '''Returns the original annotation of image at index
 
@@ -195,13 +199,13 @@ class KAISTDetection(data.Dataset):
                 eg: ('001718', [96, 13, 438, 332, 12])
         '''
         img_id = self.ids[index]
-        target = self._annopath % img_id
+        target = self._annopath % img_id[0:4]
         if self.target_transform is not None:
             gt = self.target_transform(target, 1, 1) # TODO VPY OK ??
         else:
             print("no target transform function!")
             sys.exit(-1)
-        return img_id[1], gt
+        return img_id[4], gt, None
 
     def pull_tensor(self, index):
         '''Returns the original image at an index in tensor form

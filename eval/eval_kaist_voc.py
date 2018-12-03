@@ -4,134 +4,53 @@
     Licensed under The MIT License [see LICENSE for details]
 """
 
-from __future__ import print_function
 import torch
 import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
-from data import BaseTransform
 
+import argparse
+import numpy as np
+
+from utils.timer import Timer
+from models.ssd import build_ssd
+
+from data import BaseTransform
 from data import VOC_ROOT, VOCAnnotationTransform, VOCDetection
 from data import VOC_CLASSES as VOClabelmap
 from data import KAISTAnnotationTransform, KAISTDetection
 from data import KAIST_CLASSES as KAISTlabelmap
 
-from utils.timer import Timer
-
-from models.ssd import build_ssd
-
-import sys
-import os
-import argparse
-import numpy as np
-import pickle
-import xml.etree.ElementTree as ET
-
-from data.voc0712 import parse_rec_voc
-# from data.voc0712 import write_voc_results_file
-# from data.voc0712 import get_voc_results_file_template
-from data.kaist import parse_rec_kaist
-# from data.kaist import write_kaist_results_file
-# from data.kaist import get_kaist_results_file_template
 
 from eval.voc_ap import voc_ap
 from utils.misc import str2bool
 
 def arg_parser():
-
-    parser = argparse.ArgumentParser(
-        description='Single Shot MultiBox Detector Evaluation')
-    parser.add_argument('--dataset_type', default='VOC', choices=['VOC', 'COCO', "KAIST"],
-                        type=str, help='VOC, COCO, KAIST (requires image_set)')
-    parser.add_argument('--image_set', default=None,
-                        help='Imageset')
-    parser.add_argument('--trained_model',
-                        default='weights/ssd300_mAP_77.43_v2.pth', type=str,
-                        help='Trained state_dict file path to open')
-    parser.add_argument('--confidence_threshold', default=0.01, type=float,
-                        help='Detection confidence threshold')
-    parser.add_argument('--cuda', default=True, type=str2bool,
-                        help='Use cuda to train model')
-    parser.add_argument('--dataset_root', default=None,
-                        help='Location of dataset root directory')
-
+    parser = argparse.ArgumentParser(description='Single Shot MultiBox Detector Evaluation')
+    parser.add_argument('--dataset_type', default='VOC', choices=['VOC', 'COCO', "KAIST"], type=str, help='VOC, COCO, KAIST (requires image_set)')
+    parser.add_argument('--image_set', default=None, help='Imageset')
+    parser.add_argument('--trained_model', default='weights/ssd300_mAP_77.43_v2.pth', type=str, help='Trained state_dict file path to open')
+    parser.add_argument('--confidence_threshold', default=0.01, type=float, help='Detection confidence threshold')
+    parser.add_argument('--cuda', default=True, type=str2bool, help='Use cuda to train model')
+    parser.add_argument('--dataset_root', default=None, help='Location of dataset root directory')
     args = parser.parse_args()
-
     return args
 
-
-def get_output_dir(name, phase):
-    """Return the directory where experimental artifacts are placed.
-    If the directory does not exist, it is created.
-    A canonical path is built using the name from an imdb and a network
-    (if not None).
-    """
-    filedir = os.path.join("output", name, phase)
-    if not os.path.exists(filedir):
-        os.makedirs(filedir)
-    return filedir
-
-def get_results_file_template(image_set):
-    # VOCdevkit/VOC2007/results/det_test_aeroplane.txt
-    filename = 'det_' + image_set + '_%s.txt'
-    filedir = os.path.join(args.dataset_root, 'results')
-    if not os.path.exists(filedir):
-        os.makedirs(filedir)
-    path = os.path.join(filedir, filename)
-    return path
-
-def write_results_file(all_boxes, dataset):
-    for cls_ind, cls in enumerate(labelmap):
-        print('Writing {:s} VOC results file'.format(cls))
-        filename = get_results_file_template(set_type) % (cls)
-        with open(filename, 'wt') as f:
-            for im_ind, index in enumerate(dataset.ids):
-                dets = all_boxes[cls_ind+1][im_ind]
-                if dets == []:
-                    continue
-                # the VOCdevkit expects 1-based indices
-                if args.dataset_type == "VOC":
-                    for k in range(dets.shape[0]):
-                        f.write('{:s} {:.3f} {:.1f} {:.1f} {:.1f} {:.1f}\n'.
-                                format(index[1], dets[k, -1],
-                                       dets[k, 0] + 1, dets[k, 1] + 1,
-                                       dets[k, 2] + 1, dets[k, 3] + 1))
-
-                elif args.dataset_type == "KAIST":
-                    for k in range(dets.shape[0]):
-                        f.write('{:s}/{:s}/{:s} {:.3f} {:.1f} {:.1f} {:.1f} {:.1f}\n'.
-                                format(index[1], index[2], index[3], dets[k, -1],
-                                       dets[k, 0] + 1, dets[k, 1] + 1,
-                                       dets[k, 2] + 1, dets[k, 3] + 1))
-
-                else:
-                    print("dataset not supported")
-                    sys.exit(-1)
-
-
-
-
-def do_python_eval(output_dir='output', use_07=True):
-    cachedir = os.path.join(args.dataset_root, 'annotations_cache')
+def eval(gt_class_recs, det_BB, det_image_ids, det_confidence, labelmap, use_voc07_metric=True):
+    print("\n----------------------------------------------------------------")
+    print("Eval")
+    print("----------------------------------------------------------------")
+    print('VOC07 metric? ' + ('Yes' if use_voc07_metric else 'No'))
     aps = []
-    # The PASCAL VOC metric changed in 2010
-    use_07_metric = use_07
-    print('VOC07 metric? ' + ('Yes' if use_07_metric else 'No'))
-    if not os.path.isdir(output_dir):
-        os.mkdir(output_dir)
+    aps_dict = {}
+
     for i, cls in enumerate(labelmap):
-        filepath = get_results_file_template(set_type)
-        if args.dataset_type == "VOC":
-            rec, prec, ap = voc_eval(filepath, annopath, imgsetpath.format(set_type), cls, cachedir, ovthresh=0.5, use_07_metric=use_07_metric)
-        elif args.dataset_type == "KAIST":
-            rec, prec, ap = voc_eval(filepath, annopath, args.image_set, cls, cachedir, ovthresh=0.5, use_07_metric=use_07_metric)
-        else:
-            print("dataset not supported")
-            sys.exit(-1)
+        rec, prec, ap = voc_eval(gt_class_recs[i+1], det_BB[i+1], det_image_ids[i+1], det_confidence[i+1], ovthresh=0.5, use_07_metric=use_voc07_metric)
         aps += [ap]
+        aps_dict[cls] = ap
         print('AP for {} = {:.4f}'.format(cls, ap))
-        with open(os.path.join(output_dir, cls + '_pr.pkl'), 'wb') as f:
-            pickle.dump({'rec': rec, 'prec': prec, 'ap': ap}, f)
-    print('Mean AP = {:.4f}'.format(np.mean(aps)))
+
+    mAP = np.mean(aps)
+    print('Mean AP = {:.4f}'.format(mAP))
     print('~~~~~~~~')
     print('Results:')
     for ap in aps:
@@ -139,175 +58,91 @@ def do_python_eval(output_dir='output', use_07=True):
     print('{:.3f}'.format(np.mean(aps)))
     print('~~~~~~~~')
     print('')
-    print('--------------------------------------------------------------')
-    print('Results computed with the **unofficial** Python eval code.')
-    print('Results should be very close to the official MATLAB eval code.')
-    print('--------------------------------------------------------------')
 
-def voc_eval(detpath, annopath, imagesetfile, classname, cachedir, ovthresh=0.5, use_07_metric=True):
-    """
-    rec, prec, ap = voc_eval(detpath, annopath, imagesetfile, classname, [ovthresh], [use_07_metric])
+    # details = None #TODO VPY
+    return mAP, aps_dict
 
-    Top level function that does the PASCAL VOC evaluation.
+def voc_eval(gt_class_recs, det_BB, det_image_ids, det_confidence, ovthresh=0.5, use_07_metric=True):
+    # TODO VPY document!
 
-    detpath: Path to detections. detpath.format(classname) should produce the detection results file.
-    annopath: Path to annotations. annopath.format(imagename) should be the xml annotations file.
-    imagesetfile: Text file containing the list of images, one image per line.
-    classname: Category name (duh)
-    cachedir: Directory for caching the annotations
-    [ovthresh]: Overlap threshold (default = 0.5)
-    [use_07_metric]: Whether to use VOC07's 11 point AP computation (default True)
-    """
+    npos = len([x for _, value in gt_class_recs.items() for x in value['difficult'] if x == False])
 
-    # assumes detections are in detpath.format(classname)
-    # assumes annotations are in annopath.format(imagename)
-    # assumes imagesetfile is a text file with each line an image name
-    # cachedir caches the annotations in a pickle file
+    # sort by confidence
+    det_sorted_ind = np.argsort(-det_confidence)
+    det_sorted_scores = np.sort(-det_confidence)
+    det_BB = det_BB[det_sorted_ind, :]
+    det_image_ids = [det_image_ids[x] for x in det_sorted_ind]
 
-    # first load gt
-    if not os.path.isdir(cachedir):
-        os.mkdir(cachedir)
-    cachefile = os.path.join(cachedir, 'annots.pkl')
-    # read list of images
-    with open(imagesetfile, 'r') as f:
-        lines = f.readlines()
-    imagenames = [x.strip() for x in lines if not x.startswith("#")]
-    if not os.path.isfile(cachefile):
-        # load annots
-        recs = {}
-        for i, imagename in enumerate(imagenames):
-            if args.dataset_type == "VOC":
-                recs[imagename] = parse_rec_voc(annopath % (imagename))
-            elif args.dataset_type == "KAIST":
-                recs[imagename] = parse_rec_kaist(annopath % tuple(imagename.split("/")))
-            else:
-                print("dataset not supported")
-                sys.exit(-1)
-            if i % 100 == 0:
-                print('Reading annotation for {:d}/{:d}'.format(i + 1, len(imagenames)))
-        # save
-        print('Saving cached annotations to {:s}'.format(cachefile))
-        with open(cachefile, 'wb') as f:
-            pickle.dump(recs, f)
-    else:
-        # load
-        with open(cachefile, 'rb') as f:
-            recs = pickle.load(f)
+    # go down dets and mark TPs and FPs
+    nd = len(det_image_ids)
+    tp = np.zeros(nd)
+    fp = np.zeros(nd)
 
-    # extract gt objects for this class
-    class_recs = {}
-    npos = 0
-    for imagename in imagenames:
-        R = [obj for obj in recs[imagename] if obj['name'] == classname]
-        bbox = np.array([x['bbox'] for x in R])
-        if args.dataset_type == "VOC":
-            difficult = np.array([x['difficult'] for x in R]).astype(np.bool)
-        elif args.dataset_type == "KAIST":
-            difficult = np.array([False for x in R]).astype(np.bool)
+    for d in range(nd):
+        gt_R = gt_class_recs[det_image_ids[d]]
+        det_bb = det_BB[d, :].astype(float)
+        ovmax = -np.inf
+        gt_BBGT = gt_R['bbox'].astype(float)
+        if gt_BBGT.size > 0:
+            # compute overlaps
+            # intersection
+            ixmin = np.maximum(gt_BBGT[:, 0], det_bb[0])
+            iymin = np.maximum(gt_BBGT[:, 1], det_bb[1])
+            ixmax = np.minimum(gt_BBGT[:, 2], det_bb[2])
+            iymax = np.minimum(gt_BBGT[:, 3], det_bb[3])
+            iw = np.maximum(ixmax - ixmin, 0.)
+            ih = np.maximum(iymax - iymin, 0.)
+            inters = iw * ih
+            uni = ((det_bb[2] - det_bb[0]) * (det_bb[3] - det_bb[1]) +
+                   (gt_BBGT[:, 2] - gt_BBGT[:, 0]) *
+                   (gt_BBGT[:, 3] - gt_BBGT[:, 1]) - inters)
+            overlaps = inters / uni
+            ovmax = np.max(overlaps)
+            jmax = np.argmax(overlaps)
+        if ovmax > ovthresh:
+            if not gt_R['difficult'][jmax]:
+                if not gt_R['det'][jmax]:
+                    tp[d] = 1.
+                    gt_R['det'][jmax] = 1
+                else:
+                    fp[d] = 1.
         else:
-            print("dataset not supported")
-            sys.exit(-1)
-        det = [False] * len(R)
-        npos = npos + sum(~difficult)
-        class_recs[imagename] = {'bbox': bbox,
-                                 'difficult': difficult,
-                                 'det': det}
+            fp[d] = 1.
 
-    # read dets
-    detfile = detpath % (classname)
-    with open(detfile, 'r') as f:
-        lines = f.readlines()
-    if any(lines) == 1:
-
-        splitlines = [x.strip().split(' ') for x in lines]
-        image_ids = [x[0] for x in splitlines]
-        confidence = np.array([float(x[1]) for x in splitlines])
-        BB = np.array([[float(z) for z in x[2:]] for x in splitlines])
-
-        # sort by confidence
-        sorted_ind = np.argsort(-confidence)
-        sorted_scores = np.sort(-confidence)
-        BB = BB[sorted_ind, :]
-        image_ids = [image_ids[x] for x in sorted_ind]
-
-        # go down dets and mark TPs and FPs
-        nd = len(image_ids)
-        tp = np.zeros(nd)
-        fp = np.zeros(nd)
-        for d in range(nd):
-            R = class_recs[image_ids[d]]
-            bb = BB[d, :].astype(float)
-            ovmax = -np.inf
-            BBGT = R['bbox'].astype(float)
-            if BBGT.size > 0:
-                # compute overlaps
-                # intersection
-                ixmin = np.maximum(BBGT[:, 0], bb[0])
-                iymin = np.maximum(BBGT[:, 1], bb[1])
-                ixmax = np.minimum(BBGT[:, 2], bb[2])
-                iymax = np.minimum(BBGT[:, 3], bb[3])
-                iw = np.maximum(ixmax - ixmin, 0.)
-                ih = np.maximum(iymax - iymin, 0.)
-                inters = iw * ih
-                uni = ((bb[2] - bb[0]) * (bb[3] - bb[1]) +
-                       (BBGT[:, 2] - BBGT[:, 0]) *
-                       (BBGT[:, 3] - BBGT[:, 1]) - inters)
-                overlaps = inters / uni
-                ovmax = np.max(overlaps)
-                jmax = np.argmax(overlaps)
-
-            if ovmax > ovthresh:
-                if not R['difficult'][jmax]:
-                    if not R['det'][jmax]:
-                        tp[d] = 1.
-                        R['det'][jmax] = 1
-                    else:
-                        fp[d] = 1.
-            else:
-                fp[d] = 1.
-
-        # compute precision recall
-        fp = np.cumsum(fp)
-        tp = np.cumsum(tp)
-        rec = tp / float(npos)
-        # avoid divide by zero in case the first detection matches a difficult
-        # ground truth
-        prec = tp / np.maximum(tp + fp, np.finfo(np.float64).eps)
-        ap = voc_ap(rec, prec, use_07_metric)
-    else:
-        rec = -1.
-        prec = -1.
-        ap = -1.
+    # compute precision recall
+    fp = np.cumsum(fp)
+    tp = np.cumsum(tp)
+    rec = tp / float(npos)
+    # avoid divide by zero in case the first detection matches a difficult ground truth
+    prec = tp / np.maximum(tp + fp, np.finfo(np.float64).eps)
+    ap = voc_ap(rec, prec, use_07_metric)
 
     return rec, prec, ap
 
-
-def test_net(net, cuda, dataset, transform, im_size=300, thresh=0.05, dataset_type=None):
+def forward_pass(net, cuda, dataset):
     num_images = len(dataset)
     # all detections are collected into:
     #    all_boxes[cls][image] = N x 5 array of detections in
     #    (x1, y1, x2, y2, score)
-    all_boxes = [[[] for _ in range(num_images)]
-                 for _ in range(len(labelmap)+1)]
+    all_boxes = [[[] for _ in range(num_images)] for _ in range(len(labelmap)+1)]
+    det_image_ids = [[] for _ in range(len(labelmap)+1)]
+    det_BB = [np.empty((0,4)) for _ in range(len(labelmap)+1)]
+    det_confidence = [np.empty((0)) for _ in range(len(labelmap) + 1)]
 
     # timers
     _t = {'im_detect': Timer(), 'misc': Timer()}
 
-    # create eval result folder
-    output_dir = get_output_dir(dataset.name + '_eval_ssd300_120000', set_type)
-    det_file = os.path.join(output_dir, 'detections.pkl')
-
     # loop for all test images
-    for i in range(num_images): #TODO VPY debug
-    #for i in range(10):  # TODO VPY debug
-        #print("!! Debug mode!! not all images are tested")
+    for i in range(num_images):
 
         # get image + annotations + dimensions
         im, gt, h, w = dataset.pull_item(i)
 
         x = Variable(im.unsqueeze(0))
-        if args.cuda:
+        if cuda:
             x = x.cuda()
+
+        # forward pass
         _t['im_detect'].tic()
         detections = net(x).data
         detect_time = _t['im_detect'].toc(average=True)
@@ -325,24 +160,64 @@ def test_net(net, cuda, dataset, transform, im_size=300, thresh=0.05, dataset_ty
             boxes[:, 1] *= h
             boxes[:, 3] *= h
             scores = dets[:, 0].cpu().numpy()
-            cls_dets = np.hstack((boxes.cpu().numpy(),
-                                  scores[:, np.newaxis])).astype(np.float32,
-                                                                 copy=False)
+            cls_dets = np.hstack((boxes.cpu().numpy(), scores[:, np.newaxis])).astype(np.float32, copy=False)
             all_boxes[j][i] = cls_dets
 
+            img_id = dataset.pull_img_id(i)
+            det_image_ids[j] += [img_id for _ in range(dets.size(0))]
+
+            for l in range(dets.size(0)):
+                det_BB[j] = np.vstack((det_BB[j], boxes[l].cpu().numpy()))
+                det_confidence[j] = np.append(det_confidence[j], scores[l])
+
         if (i % 100 == 0):
-            print('im_detect: {:d}/{:d} {:.3f}s'.format(i + 1, num_images, detect_time))
+            print('im_detect: {:d}/{:d}. Detection time per image: {:.3f}s'.format(i, num_images, detect_time))
 
-    with open(det_file, 'wb') as f:
-        pickle.dump(all_boxes, f, pickle.HIGHEST_PROTOCOL)
+    return all_boxes, det_BB, det_image_ids, det_confidence
 
-    print('Evaluating detections')
-    evaluate_detections(all_boxes, output_dir, dataset, dataset_type)
+def get_GT(dataset, labelmap):
+    num_images = len(dataset)
 
+    gt_all_classes_recs = [{} for _ in range(len(labelmap)+1)]
 
-def evaluate_detections(box_list, output_dir, dataset, dataset_type):
-    write_results_file(box_list, dataset)
-    do_python_eval(output_dir)
+    #loop for all classes
+    # skip j = 0, because it's the background class
+    for j in range(1, len(labelmap)+1):
+
+        # extract gt objects for this class
+        gt_class_recs = {}
+
+        #read all images
+        for i in range(num_images):
+            img_id, gt, detailed_gt = dataset.pull_anno(i)
+
+            bbox = np.empty((0,4))
+            gt_difficult = []
+
+            if dataset.name == "VOC":
+                for g in detailed_gt:
+                    if (g['name'] == labelmap[j - 1]):
+                        bbox = np.append(bbox, np.array([g['bbox']]), axis=0)
+                        gt_difficult.append(g['difficult'])
+                gt_difficult = np.array(gt_difficult).astype(np.bool)
+                det = [False] * len(gt_difficult)
+
+            elif dataset.name == "KAIST":
+                for g in gt:
+                    if (g[4]==j - 1):
+                        bbox = np.append(bbox, np.array([g[0:4]]), axis=0)
+                        gt_difficult.append(False)
+                gt_difficult = np.array(gt_difficult).astype(np.bool)
+                det = [False] * len(gt_difficult)
+
+            else:
+                print("Dataset not implemented")
+                raise NotImplementedError
+
+            gt_class_recs[img_id] = {'bbox': bbox, 'difficult': gt_difficult, 'det': det}
+        gt_all_classes_recs[j] = gt_class_recs
+
+    return gt_all_classes_recs
 
 
 if __name__ == '__main__':
@@ -355,29 +230,16 @@ if __name__ == '__main__':
         if args.cuda:
             torch.set_default_tensor_type('torch.cuda.FloatTensor')
         if not args.cuda:
-            print("WARNING: It looks like you have a CUDA device, but aren't using \
-                  CUDA.  Run with --cuda for optimal eval speed.")
+            print("WARNING: It looks like you have a CUDA device, but aren't using CUDA.  Run with --cuda for optimal eval speed.")
             torch.set_default_tensor_type('torch.FloatTensor')
     else:
         torch.set_default_tensor_type('torch.FloatTensor')
 
+    # configure according to dataset used
     if args.dataset_type == "VOC":
-        annopath = os.path.join(args.dataset_root, 'VOC2007', 'Annotations', '%s.xml')
-        imgpath = os.path.join(args.dataset_root, 'VOC2007', 'JPEGImages', '%s.jpg')
-        imgsetpath = os.path.join(args.dataset_root, 'VOC2007', 'ImageSets', 'Main', '{:s}.txt')
-        YEAR = '2007'
-        devkit_path = args.dataset_root + 'VOC' + YEAR
         labelmap = VOClabelmap
-
     elif args.dataset_type == "KAIST":
-        annopath = os.path.join(args.dataset_root, 'rgbt-ped-detection/data/kaist-rgbt/annotations/', '%s', '%s', '%s.txt')
-        imgpath = os.path.join(args.dataset_root, 'rgbt-ped-detection/data/kaist-rgbt/', '%s', 'images', '%s', '%s', 'visible', '%s.jpg')
-        imgsetpath = os.path.join(args.dataset_root, 'rgbt-ped-detection/data/kaist-rgbt/imageSets', '%s.txt')
         labelmap = KAISTlabelmap
-        # img_lwir_root_path = os.path.join(args.dataset_root, 'rgbt-ped-detection/data/kaist-rgbt/', '%s', 'images', '%s', '%s', 'lwir', '%s.jpg')
-        #YEAR = None
-        #devkit_path = None
-        #raise NotImplementedError
     else:
         print("Dataset not implemented")
         raise NotImplementedError
@@ -386,27 +248,35 @@ if __name__ == '__main__':
     set_type = 'test'
 
     # load net
-    num_classes = len(labelmap) + 1                      # +1 for background
-    net = build_ssd('test', 300, num_classes, args.dataset_type)            # initialize SSD
+    num_classes = len(labelmap) + 1 # +1 for background
+    net = build_ssd('test', 300, num_classes, args.dataset_type) # initialize SSD
     net.load_state_dict(torch.load(args.trained_model))
     net.eval()
     print('Finished loading model!')
-    # load data
 
+    # load data
     if args.dataset_type == "VOC":
         dataset = VOCDetection(root=args.dataset_root, image_sets=[('2007', set_type)], transform=BaseTransform(300, dataset_mean), target_transform=VOCAnnotationTransform(), dataset_name="VOC")
     elif args.dataset_type == "KAIST":
-        from data.kaist import compute_KAIST_dataset_mean
         #dataset_mean = tuple(compute_KAIST_dataset_mean(args.dataset_root, args.image_set))
         dataset = KAISTDetection(root=args.dataset_root,image_set=args.image_set, transform=BaseTransform(300, dataset_mean), target_transform=KAISTAnnotationTransform(), dataset_name="KAIST")
     else:
-        print("dataset not supported: {}".format(args.dataset_type))
-        sys.exit(-1)
+        print("Dataset not implemented")
+        raise NotImplementedError
 
     if args.cuda:
         net = net.cuda()
         cudnn.benchmark = True
+
+    print('Read GT')
+    ground_truth = get_GT(dataset, labelmap)
+
+    print("Forward pass")
+    detections, det_BB, det_image_ids, det_confidence = forward_pass(net=net, cuda=args.cuda, dataset=dataset)
+
     # evaluation
-    test_net(net=net, cuda=args.cuda, dataset=dataset,
-             transform=BaseTransform(net.size, dataset_mean), im_size=300,
-             thresh=args.confidence_threshold, dataset_type=args.dataset_type)
+    print('Evaluating detections')
+    mAP, ap_dict = eval(ground_truth, det_BB, det_image_ids, det_confidence, labelmap=labelmap, use_voc07_metric=True)
+    print("mAP: {}".format(mAP))
+    print("AP: {}".format(ap_dict))
+
