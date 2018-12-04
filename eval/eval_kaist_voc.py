@@ -6,12 +6,9 @@
 
 import torch
 import torch.backends.cudnn as cudnn
-from torch.autograd import Variable
 
 import argparse
-import numpy as np
 
-from utils.timer import Timer
 from models.ssd import build_ssd
 
 from data import BaseTransform
@@ -19,10 +16,13 @@ from data import VOC_ROOT, VOCAnnotationTransform, VOCDetection
 from data import VOC_CLASSES as VOClabelmap
 from data import KAISTAnnotationTransform, KAISTDetection
 from data import KAIST_CLASSES as KAISTlabelmap
+from eval.get_GT import get_GT
+from eval.eval_tools import eval
+from eval.forward_pass import forward_pass
 
 
-from eval.voc_ap import voc_ap
 from utils.misc import str2bool
+from utils.misc import frange
 
 def arg_parser():
     parser = argparse.ArgumentParser(description='Single Shot MultiBox Detector Evaluation')
@@ -34,185 +34,6 @@ def arg_parser():
     parser.add_argument('--dataset_root', default=None, help='Location of dataset root directory')
     args = parser.parse_args()
     return args
-
-def eval(gt_class_recs, det_BB, det_image_ids, det_confidence, labelmap, use_voc07_metric=True):
-    print("\n----------------------------------------------------------------")
-    print("Eval")
-    print("----------------------------------------------------------------")
-    print('VOC07 metric? ' + ('Yes' if use_voc07_metric else 'No'))
-    aps = []
-    aps_dict = {}
-
-    for i, cls in enumerate(labelmap):
-        rec, prec, ap = voc_eval(gt_class_recs[i+1], det_BB[i+1], det_image_ids[i+1], det_confidence[i+1], ovthresh=0.5, use_07_metric=use_voc07_metric)
-        aps += [ap]
-        aps_dict[cls] = ap
-        print('AP for {} = {:.4f}'.format(cls, ap))
-
-    mAP = np.mean(aps)
-    print('Mean AP = {:.4f}'.format(mAP))
-    print('~~~~~~~~')
-    print('Results:')
-    for ap in aps:
-        print('{:.3f}'.format(ap))
-    print('{:.3f}'.format(np.mean(aps)))
-    print('~~~~~~~~')
-    print('')
-
-    # details = None #TODO VPY
-    return mAP, aps_dict
-
-def voc_eval(gt_class_recs, det_BB, det_image_ids, det_confidence, ovthresh=0.5, use_07_metric=True):
-    # TODO VPY document!
-
-    npos = len([x for _, value in gt_class_recs.items() for x in value['difficult'] if x == False])
-
-    # sort by confidence
-    det_sorted_ind = np.argsort(-det_confidence)
-    det_sorted_scores = np.sort(-det_confidence)
-    det_BB = det_BB[det_sorted_ind, :]
-    det_image_ids = [det_image_ids[x] for x in det_sorted_ind]
-
-    # go down dets and mark TPs and FPs
-    nd = len(det_image_ids)
-    tp = np.zeros(nd)
-    fp = np.zeros(nd)
-
-    for d in range(nd):
-        gt_R = gt_class_recs[det_image_ids[d]]
-        det_bb = det_BB[d, :].astype(float)
-        ovmax = -np.inf
-        gt_BBGT = gt_R['bbox'].astype(float)
-        if gt_BBGT.size > 0:
-            # compute overlaps
-            # intersection
-            ixmin = np.maximum(gt_BBGT[:, 0], det_bb[0])
-            iymin = np.maximum(gt_BBGT[:, 1], det_bb[1])
-            ixmax = np.minimum(gt_BBGT[:, 2], det_bb[2])
-            iymax = np.minimum(gt_BBGT[:, 3], det_bb[3])
-            iw = np.maximum(ixmax - ixmin, 0.)
-            ih = np.maximum(iymax - iymin, 0.)
-            inters = iw * ih
-            uni = ((det_bb[2] - det_bb[0]) * (det_bb[3] - det_bb[1]) +
-                   (gt_BBGT[:, 2] - gt_BBGT[:, 0]) *
-                   (gt_BBGT[:, 3] - gt_BBGT[:, 1]) - inters)
-            overlaps = inters / uni
-            ovmax = np.max(overlaps)
-            jmax = np.argmax(overlaps)
-        if ovmax > ovthresh:
-            if not gt_R['difficult'][jmax]:
-                if not gt_R['det'][jmax]:
-                    tp[d] = 1.
-                    gt_R['det'][jmax] = 1
-                else:
-                    fp[d] = 1.
-        else:
-            fp[d] = 1.
-
-    # compute precision recall
-    fp = np.cumsum(fp)
-    tp = np.cumsum(tp)
-    rec = tp / float(npos)
-    # avoid divide by zero in case the first detection matches a difficult ground truth
-    prec = tp / np.maximum(tp + fp, np.finfo(np.float64).eps)
-    ap = voc_ap(rec, prec, use_07_metric)
-
-    return rec, prec, ap
-
-def forward_pass(net, cuda, dataset):
-    num_images = len(dataset)
-
-    det_image_ids = [[] for _ in range(len(labelmap)+1)]
-    det_BB = [np.empty((0,4)) for _ in range(len(labelmap)+1)]
-    det_confidence = [np.empty((0)) for _ in range(len(labelmap) + 1)]
-
-    # timers
-    _t = {'im_detect': Timer(), 'misc': Timer()}
-
-    # loop for all test images
-    for i in range(num_images):
-
-        # get image + annotations + dimensions
-        im, gt, h, w = dataset.pull_item(i)
-
-        x = Variable(im.unsqueeze(0))
-        if cuda:
-            x = x.cuda()
-
-        # forward pass
-        _t['im_detect'].tic()
-        detections = net(x).data
-        detect_time = _t['im_detect'].toc(average=True)
-
-        # skip j = 0, because it's the background class
-        for j in range(1, detections.size(1)):
-            dets = detections[0, j, :]
-            mask = dets[:, 0].gt(0.).expand(5, dets.size(0)).t()
-            dets = torch.masked_select(dets, mask).view(-1, 5)
-            if dets.size(0) == 0:
-                continue
-            boxes = dets[:, 1:]
-            boxes[:, 0] *= w
-            boxes[:, 2] *= w
-            boxes[:, 1] *= h
-            boxes[:, 3] *= h
-            scores = dets[:, 0].cpu().numpy()
-
-            img_id = dataset.pull_img_id(i)
-            det_image_ids[j] += [img_id for _ in range(dets.size(0))]
-
-            for l in range(dets.size(0)):
-                det_BB[j] = np.vstack((det_BB[j], boxes[l].cpu().numpy()))
-                det_confidence[j] = np.append(det_confidence[j], scores[l])
-
-        if (i % 100 == 0):
-            print('im_detect: {:d}/{:d}. Detection time per image: {:.3f}s'.format(i, num_images, detect_time))
-
-    return det_image_ids, det_BB, det_confidence
-
-def get_GT(dataset, labelmap):
-    num_images = len(dataset)
-
-    gt_all_classes_recs = [{} for _ in range(len(labelmap)+1)]
-
-    #loop for all classes
-    # skip j = 0, because it's the background class
-    for j in range(1, len(labelmap)+1):
-
-        # extract gt objects for this class
-        gt_class_recs = {}
-
-        #read all images
-        for i in range(num_images):
-            img_id, gt, detailed_gt = dataset.pull_anno(i)
-
-            bbox = np.empty((0,4))
-            gt_difficult = []
-
-            if dataset.name == "VOC":
-                for g in detailed_gt:
-                    if (g['name'] == labelmap[j - 1]):
-                        bbox = np.append(bbox, np.array([g['bbox']]), axis=0)
-                        gt_difficult.append(g['difficult'])
-                gt_difficult = np.array(gt_difficult).astype(np.bool)
-                det = [False] * len(gt_difficult)
-
-            elif dataset.name == "KAIST":
-                for g in gt:
-                    if (g[4]==j - 1):
-                        bbox = np.append(bbox, np.array([g[0:4]]), axis=0)
-                        gt_difficult.append(False)
-                gt_difficult = np.array(gt_difficult).astype(np.bool)
-                det = [False] * len(gt_difficult)
-
-            else:
-                print("Dataset not implemented")
-                raise NotImplementedError
-
-            gt_class_recs[img_id] = {'bbox': bbox, 'difficult': gt_difficult, 'det': det}
-        gt_all_classes_recs[j] = gt_class_recs
-
-    return gt_all_classes_recs
 
 
 if __name__ == '__main__':
@@ -267,10 +88,12 @@ if __name__ == '__main__':
     ground_truth = get_GT(dataset, labelmap)
 
     print("Forward pass")
-    det_image_ids, det_BB, det_confidence = forward_pass(net=net, cuda=args.cuda, dataset=dataset)
+    det_image_ids, det_BB, det_confidence = forward_pass(net=net, cuda=args.cuda, dataset=dataset, labelmap=labelmap)
 
     # evaluation
     print('Evaluating detections')
-    mAP, ap_dict = eval(ground_truth, det_BB, det_image_ids, det_confidence, labelmap=labelmap, use_voc07_metric=True)
-    print("mAP: {}".format(mAP))
-    print("AP: {}".format(ap_dict))
+    # for i in
+    mAP, ap_dict, tpfp_dict = eval(ground_truth, det_BB, det_image_ids, det_confidence, labelmap=labelmap, use_voc07_metric=True, ovthresh=0.5)
+    # print("mAP: {}".format(mAP))
+    # print("AP: {}".format(ap_dict))
+    # print("tpfp_dict: {}".format(tpfp_dict))
