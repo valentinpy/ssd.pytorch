@@ -35,6 +35,7 @@ class PriorBox(object):
                 cx = (j + 0.5) / f_k
                 cy = (i + 0.5) / f_k
 
+                #TODO VPY
                 # aspect_ratio: 1
                 # rel size: min_size
                 s_k = self.min_sizes[k]/self.image_size
@@ -48,11 +49,49 @@ class PriorBox(object):
                 # rest of aspect ratios
                 for ar in self.aspect_ratios[k]:
                     mean += [cx, cy, s_k*sqrt(ar), s_k/sqrt(ar)]
-                    mean += [cx, cy, s_k/sqrt(ar), s_k*sqrt(ar)]
+                    mean += [cx, cy, s_k*sqrt(0.5+ar), s_k/sqrt(0.5+ar)]
         # back to torch land
         output = torch.Tensor(mean).view(-1, 4)
         if self.clip:
             output = point_form(output)
             output.clamp_(max=1, min=0)
             output = center_size(output)
+
+        # #TODO VPY debug
+        # import matplotlib.pyplot as plt
+        # import matplotlib.patches as patches
+        # import numpy as np
+        # import cv2
+        #
+        # for i in output:
+        #     i = i.cpu().numpy()
+        #     i*=1000
+        #     cx=i[0]
+        #     cy=i[1]
+        #     dx=i[2]
+        #     dy=i[3]
+        #     xmin = cx - dx
+        #     xmax = cx + dx
+        #     ymin = cy - dy
+        #     ymax = cy + dy
+        #
+        #
+        #     if (cx > 200) and (cy > 200) and (cx < 800) and (cy < 800):
+        #         print("new")
+        #         print(i)
+        #         print(xmin, xmax, ymin, ymax)
+        #
+        #
+        #         data = np.zeros((1000, 1000))
+        #         data= cv2.rectangle(data, (xmin, ymin), (xmax, ymax), 255)
+        #         cv2.imshow('test', data)
+        #         cv2.waitKey(200)
+
+        # cv2.destroyAllWindows()
+        # fig, ax = plt.subplots(1)
+
+        # ax.imshow(data)
+        #
+        # plt.show()
+
         return output

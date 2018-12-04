@@ -50,7 +50,8 @@ kaist = {
     'steps': [8, 16, 32, 64, 100, 300], # TODO VPY?
     'min_sizes': [21, 45, 99, 153, 207, 261], # TODO VPY?
     'max_sizes': [45, 99, 153, 207, 261, 315], # TODO VPY?
-    'aspect_ratios': [[2], [2, 3], [2, 3], [2, 3], [2], [2]], # TODO VPY?
+    # 'aspect_ratios': [[2], [2, 3], [2, 3], [2, 3], [2], [2]], # TODO VPY?
+    'aspect_ratios': [[1.7, 2.5], [1.7, 2.5], [1.7, 2.5], [1.7, 2.5], [1.7, 2.5], [1.7, 2.5]], # TODO VPY?
     'variance': [0.1, 0.2], # TODO VPY?
     'clip': True, # TODO VPY?
     'name': 'KAIST',
