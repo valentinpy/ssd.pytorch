@@ -43,6 +43,7 @@ class SSD(nn.Module):
         self.priorbox = PriorBox(self.cfg)
         with torch.no_grad():
             self.priors = self.priorbox.forward()
+            print("VPY: we'll have {} prior boxes".format(self.priors.shape[0]))
         self.size = size
 
         # SSD network
@@ -56,7 +57,7 @@ class SSD(nn.Module):
 
         if phase == 'test':
             self.softmax = nn.Softmax(dim=-1)
-            self.detect = Detect(num_classes, 200, 0.01, 0.45) #VPY: was self.detect = Detect(num_classes, 200, 0.01, 0.45)
+            self.detect = Detect(num_classes, 200, 0.005, 0.45) #VPY: We allow more low-confidence boxes (slower)  #original was self.detect = Detect(num_classes, 200, 0.01, 0.45)
 
     def forward(self, x):
         """Applies network layers and ops on input image(s) x.
@@ -201,8 +202,8 @@ extras = {
     '512': [],
 }
 mbox = {
-    #'300': [4, 6, 6, 6, 4, 4],  # number of boxes per feature map location
-    '300': [6, 6, 6, 6, 6, 6],
+    #'300': [4, 6, 6, 6, 4, 4],  # number of boxes per feature map location  #Original
+    '300': [5, 5, 5, 5, 5, 5], # VPY: for modified prior_boxes qhich keep only square + vertical boxes
     '512': [],
 }
 

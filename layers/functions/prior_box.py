@@ -36,6 +36,8 @@ class PriorBox(object):
                 cy = (i + 0.5) / f_k
 
                 #TODO VPY
+                # We keep squares and vertical boxes, and remove horizonal ones
+
                 # aspect_ratio: 1
                 # rel size: min_size
                 s_k = self.min_sizes[k]/self.image_size
@@ -47,9 +49,10 @@ class PriorBox(object):
                 mean += [cx, cy, s_k_prime, s_k_prime]
 
                 # rest of aspect ratios
+                # VPY: only vertical boxes keptq!
                 for ar in self.aspect_ratios[k]:
                     mean += [cx, cy, s_k*sqrt(ar), s_k/sqrt(ar)]
-                    mean += [cx, cy, s_k*sqrt(0.5+ar), s_k/sqrt(0.5+ar)]
+                    #mean += [cx, cy, s_k/sqrt(ar), s_k*sqrt(ar)]
         # back to torch land
         output = torch.Tensor(mean).view(-1, 4)
         if self.clip:
