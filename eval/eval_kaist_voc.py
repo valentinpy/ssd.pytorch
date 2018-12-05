@@ -93,7 +93,7 @@ if __name__ == '__main__':
     # evaluation
     print('Evaluating detections')
     # for i in
-    mAP, ap_dict, tpfp_dict = eval(ground_truth, det_BB, det_image_ids, det_confidence, labelmap=labelmap, use_voc07_metric=True, ovthresh=0.5)
+    mAP, aps_dict = eval(ground_truth, det_BB, det_image_ids, det_confidence, labelmap=labelmap, use_voc07_metric=True)
     # print("mAP: {}".format(mAP))
     # print("AP: {}".format(ap_dict))
     # print("tpfp_dict: {}".format(tpfp_dict))

@@ -98,7 +98,7 @@ def voc_eval_class(gt_class_recs, det_BB, det_image_ids, det_confidence, ovthres
 
         else:
             fp[d] = 1.
-    print("ovthresh: {}, npos: {}, fp_thresh: {}, miss: {}".format(ovthresh, npos,  max(np.cumsum(fp_thresh)), miss))
+    # print("ovthresh: {}, npos: {}, fp_thresh: {}, miss: {}".format(ovthresh, npos,  max(np.cumsum(fp_thresh)), miss))
 
     # compute precision recall
     fp = np.cumsum(fp)
