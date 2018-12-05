@@ -32,6 +32,7 @@ class Detect(Function):
         """
         num = loc_data.size(0)  # batch size
         num_priors = prior_data.size(0)
+        #print("VPY: num priors: {}".format(num_priors))
         output = torch.zeros(num, self.num_classes, num_priors, 5)
         conf_preds = conf_data.view(num, num_priors,
                                     self.num_classes).transpose(2, 1)
