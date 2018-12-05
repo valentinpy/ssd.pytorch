@@ -258,8 +258,8 @@ def train(args):
         conf_loss += loss_c.data.item()
 
         if iteration % 10 == 0:
-            print(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S") + " | " + args.dataset + ': iter ' + repr(iteration) + ' || lr: %g || Loss: %.4f ||' %
-                  (optimizer.param_groups[0]['lr'], loss.data.item()), end=' ')
+            print(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S") + " | " + args.dataset + ': iter ' + repr(iteration) + ' || lr: %g || Loss: %.4f (loc: %.4f, conf: %.4f) ||' %
+                  (optimizer.param_groups[0]['lr'], loss.data.item(), loss_l.data.item(), loss_c.data.item()), end=' ')
             print('data: %.3fms, batch: %.3fs' % (data_time*1000, batch_time))
 
         if args.visdom:
