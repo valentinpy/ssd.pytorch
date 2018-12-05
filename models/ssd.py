@@ -56,7 +56,7 @@ class SSD(nn.Module):
 
         if phase == 'test':
             self.softmax = nn.Softmax(dim=-1)
-            self.detect = Detect(num_classes, 200, 0.001, 0.45) #VPY: was self.detect = Detect(num_classes, 200, 0.01, 0.45)
+            self.detect = Detect(num_classes, 200, 0.01, 0.45) #VPY: was self.detect = Detect(num_classes, 200, 0.01, 0.45)
 
     def forward(self, x):
         """Applies network layers and ops on input image(s) x.
@@ -201,7 +201,8 @@ extras = {
     '512': [],
 }
 mbox = {
-    '300': [4, 6, 6, 6, 4, 4],  # number of boxes per feature map location
+    #'300': [4, 6, 6, 6, 4, 4],  # number of boxes per feature map location
+    '300': [6, 6, 6, 6, 6, 6],
     '512': [],
 }
 
