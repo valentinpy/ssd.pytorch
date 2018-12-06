@@ -180,6 +180,41 @@ class KAISTDetection(data.Dataset):
 
         return img
 
+    def pull_visible_image(self, index):
+        '''Returns the original image object at index in PIL form (visible image)
+
+        Note: not using self.__getitem__(), as any transformations passed in
+        could mess up this functionality.
+
+        Argument:
+            index (int): index of img to show (RGB)
+        Return:
+            PIL img
+        '''
+
+        img_id = self.ids[index]
+        img = cv2.imread(self._img_vis_root_path % img_id[0:4])
+
+        # to rgb
+        img = img[:, :, (2, 1, 0)]
+        return img
+
+    def pull_lwir_image(self, index):
+        '''Returns the original image object at index in PIL form (LWIR image)
+
+        Note: not using self.__getitem__(), as any transformations passed in
+        could mess up this functionality.
+
+        Argument:
+            index (int): index of img to show
+        Return:
+            PIL img
+        '''
+
+        img_id = self.ids[index]
+        img = cv2.imread(self._img_lwir_root_path % img_id[0:4])
+        return img
+
         # return cv2.imread(self._img_vis_root_path % img_id, cv2.IMREAD_COLOR)
 
     def pull_img_id(self, index):
