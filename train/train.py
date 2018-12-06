@@ -269,7 +269,7 @@ def train(args):
         if iteration != 0 and iteration % args.save_frequency == 0:
             print('Saving state, iter:', iteration)
             model_name = os.path.join(args.save_folder, 'ssd300_' + args.dataset + '_' + repr(iteration) + '.pth')
-            latest_name = os.path.join(args.save_folder, 'ssd300_' + args.dataset + '_latest.pth')
+            latest_name = ('ssd300_' + args.dataset + '_latest.pth')
             torch.save(ssd_net.state_dict(), model_name)
             os.system('ln -sf {} {}'.format(model_name, latest_name))
 
