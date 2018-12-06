@@ -48,7 +48,7 @@ def get_annotations_info(ground_truth):
 
     print("mean aspect ration: {}".format(np.mean(apect_ratio)))
     print("aspect ratio range [1 sigma => 0.682]: [{};{}]".format(np.mean(apect_ratio) - np.std(apect_ratio), np.mean(apect_ratio) + np.std(apect_ratio)))
-    print("aspect ratio range [3 sigma => 0.996]: [{};{}]".format(np.mean(apect_ratio) - (2 * np.std(apect_ratio)), np.mean(apect_ratio) + (2 * np.std(apect_ratio))))
+    print("aspect ratio range [2 sigma => 0.954]: [{};{}]".format(np.mean(apect_ratio) - (2 * np.std(apect_ratio)), np.mean(apect_ratio) + (2 * np.std(apect_ratio))))
     print("aspect ratio range [3 sigma => 0.996]: [{};{}]".format(np.mean(apect_ratio) - (3*np.std(apect_ratio)), np.mean(apect_ratio) +(3 * np.std(apect_ratio))))
     results = {'number_classes': number_classes,
                'number_annotations' : number_annotations,
