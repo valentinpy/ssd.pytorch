@@ -28,8 +28,14 @@ def arg_parser():
     parser.add_argument('--use_set00_01_02', default=False, type=str2bool,
                         help='Use set00_01_02')
 
+    parser.add_argument('--use_set03_04_05', default=False, type=str2bool,
+                        help='Use set03_04_05')
+
     parser.add_argument('--use_set06_07_08', default=False, type=str2bool,
                         help='Use set06_07_08')
+
+    parser.add_argument('--use_set09_10_11', default=False, type=str2bool,
+                        help='Use set09_10_11')
 
     parser.add_argument('--only_person', default=False, type=str2bool,
                         help="Filter out images which do not contain exclusively 'person'")
@@ -65,8 +71,18 @@ def argcheck(args):
             print("Only day supported yet")
             sys.exit(-1)
 
-        if args.use_set00_01_02 == args.use_set06_07_08:
-            print("must choose either set0-2 or set 6-8")
+        set_used = 0
+        if args.use_set00_01_02:
+            set_used+=1
+        if args.use_set03_04_05:
+            set_used+=1
+        if args.use_set06_07_08:
+            set_used+=1
+        if args.use_set09_10_11:
+            set_used+=1
+
+        if set_used is not 1:
+            print("only one set can be chosen at a time")
             sys.exit(-1)
 
         if args.max_images == -1:
@@ -137,9 +153,13 @@ def parse_annotations(args):
     annotation_files = [y for x in os.walk(annotations_folder) for y in glob(os.path.join(x[0], '*.txt'))]
 
     if args.use_set00_01_02:
-        annotation_files = [x for x in annotation_files if (("set00" in x) or ("set01" in x) or ("set02" in x))]
+        annotation_files = [x for x in annotation_files if (("set00" in x) or ("set01" in x) or ("set02" in x))] #train day
     elif args.use_set06_07_08:
-        annotation_files = [x for x in annotation_files if (("set06" in x) or ("set07" in x) or ("set08" in x))]
+        annotation_files = [x for x in annotation_files if (("set06" in x) or ("set07" in x) or ("set08" in x))] #test day
+    elif args.use_set03_04_05:
+        annotation_files = [x for x in annotation_files if (("set03" in x) or ("set04" in x) or ("set05" in x))] #train night
+    elif args.use_set09_10_11:
+        annotation_files = [x for x in annotation_files if (("set09" in x) or ("set10" in x) or ("set11" in x))] #test night
     else:
         sys.exit(-1)
 
