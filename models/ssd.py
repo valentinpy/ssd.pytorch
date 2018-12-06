@@ -203,7 +203,8 @@ extras = {
 }
 mbox = {
     #'300': [4, 6, 6, 6, 4, 4],  # number of boxes per feature map location  #Original
-    '300': [5, 5, 5, 5, 5, 5], # VPY: for modified prior_boxes qhich keep only square + vertical boxes
+    # '300': [5, 5, 5, 5, 5, 5], # VPY: for modified prior_boxes qhich keep only square + vertical boxes
+    '300' : [7]*6,
     '512': [],
 }
 
