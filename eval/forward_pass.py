@@ -49,7 +49,7 @@ def forward_pass(net, cuda, dataset, labelmap):
                 det_BB[j] = np.vstack((det_BB[j], boxes[l].cpu().numpy()))
                 det_confidence[j] = np.append(det_confidence[j], scores[l])
 
-        if (i % 100 == 0):
+        if (i % 10 == 0):
             print('im_detect: {:d}/{:d}. Detection time per image: {:.3f}s'.format(i, num_images, detect_time))
 
     return det_image_ids, det_BB, det_confidence
