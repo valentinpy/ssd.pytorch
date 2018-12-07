@@ -265,18 +265,13 @@ def train(args):
         if args.visdom:
             update_vis_plot(iteration, loss_l.data.item(), loss_c.data.item(), iter_plot, epoch_plot, 'append')
 
-        # save model at a given frequency during training
-        if iteration != 0 and iteration % args.save_frequency == 0:
+        # save model at a given frequency during training and at the end
+        if (iteration != 0 and iteration % args.save_frequency == 0) or (iteration==cfg['max_iter']-1):
             print('Saving state, iter:', iteration)
             model_name = os.path.join(args.save_folder, 'ssd300_' + args.dataset + '_' + repr(iteration) + '.pth')
             latest_name = ('ssd300_' + args.dataset + '_latest.pth')
             torch.save(ssd_net.state_dict(), model_name)
             os.system('ln -sf {} {}'.format(model_name, latest_name))
-
-    # save model at the end of the training
-    torch.save(ssd_net.state_dict(), os.path.join(args.save_folder, args.dataset, args.dataset + '.pth'))
-    latest_name = os.path.join(args.save_folder, 'ssd300_' + args.dataset + '_latest.pth')
-    os.system('ln -sf {} {}'.format(model_name, latest_name))
 
     print("Finished. Model is saved at {}".format(latest_name))
     return
