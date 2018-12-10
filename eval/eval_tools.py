@@ -98,7 +98,6 @@ def voc_eval_class(gt_class_recs, det_BB, det_image_ids, det_confidence, ovthres
 
         else:
             fp[d] = 1.
-    # print("ovthresh: {}, npos: {}, fp_thresh: {}, miss: {}".format(ovthresh, npos,  max(np.cumsum(fp_thresh)), miss))
 
     # compute precision recall
     fp = np.cumsum(fp)
@@ -108,5 +107,7 @@ def voc_eval_class(gt_class_recs, det_BB, det_image_ids, det_confidence, ovthres
     # avoid divide by zero in case the first detection matches a difficult ground truth
     prec = tp / np.maximum(tp + fp, np.finfo(np.float64).eps)
     ap = voc_ap(rec, prec, use_07_metric)
+
+    print("npos: {}, max(tp): {}, max(fp): {}".format(npos, max(tp), max(fp)))
 
     return rec, prec, ap#, npos, max(tp), max(fp_thresh), miss
