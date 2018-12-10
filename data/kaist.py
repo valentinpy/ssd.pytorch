@@ -127,11 +127,12 @@ class KAISTDetection(data.Dataset):
         target = self._annopath % img_id[0:4]
 
         if self.image_fusion == 0:
-            img = cv2.imread(self._img_vis_root_path % img_id[0:4])
-
+            img = self.__pull_visible_image(index)
         elif self.image_fusion == 1:
-            img = cv2.imread(self._img_lwir_root_path % img_id[0:4])
-            img = cv2.bitwise_not(img)  #TODO VPY: use a tranform function
+            img = self.__pull_lwir_image(index)
+        elif self.image_fusion == 2:
+            img = self.__pull_lwir_image(index)
+            img = 255-img
         else:
             print("image fusion not handled")
             sys.exit(-1)
@@ -167,20 +168,20 @@ class KAISTDetection(data.Dataset):
             PIL img
         '''
 
-        img_id = self.ids[index]
         if self.image_fusion == 0:
-            img = cv2.imread(self._img_vis_root_path % img_id)
-
+            img = self.__pull_visible_image(index)
         elif self.image_fusion == 1:
-            img = cv2.imread(self._img_lwir_root_path % img_id)
-            img = cv2.bitwise_not(img)  #TODO VPY: use a tranform function
+            img = self.__pull_lwir_image(index)
+        elif self.image_fusion == 2:
+            img = self.__pull_lwir_image(index)
+            img = 255-img
         else:
             print("image fusion not handled")
             sys.exit(-1)
 
         return img
 
-    def pull_visible_image(self, index):
+    def __pull_visible_image(self, index):
         '''Returns the original image object at index in PIL form (visible image)
 
         Note: not using self.__getitem__(), as any transformations passed in
@@ -197,9 +198,10 @@ class KAISTDetection(data.Dataset):
 
         # to rgb
         img = img[:, :, (2, 1, 0)]
+        # print("pull RGB IMG: index: {}, id:{}".format(index, img_id[3]))
         return img
 
-    def pull_lwir_image(self, index):
+    def __pull_lwir_image(self, index):
         '''Returns the original image object at index in PIL form (LWIR image)
 
         Note: not using self.__getitem__(), as any transformations passed in
@@ -212,6 +214,7 @@ class KAISTDetection(data.Dataset):
         '''
 
         img_id = self.ids[index]
+        # print("pull LIR IMG: index: {}, id:{}".format(index, img_id[3]))
         img = cv2.imread(self._img_lwir_root_path % img_id[0:4])
         return img
 
