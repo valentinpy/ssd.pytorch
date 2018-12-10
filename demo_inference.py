@@ -7,8 +7,6 @@ from torch.autograd import Variable
 
 from data import BaseTransform
 
-
-
 from data import VOC_ROOT, VOCAnnotationTransform, VOCDetection
 from data import VOC_CLASSES as VOClabelmap
 from data import KAISTAnnotationTransform, KAISTDetection
@@ -18,7 +16,6 @@ from utils.misc import str2bool
 from models.ssd import build_ssd
 import cv2
 import numpy as np
-import sys
 
 def arg_parser():
     parser = argparse.ArgumentParser(description='Single Shot MultiBox Detection')
@@ -30,11 +27,12 @@ def arg_parser():
     parser.add_argument('--cuda', default=True, type=bool, help='Use cuda to train model')
     parser.add_argument('--dataset_root', default=VOC_ROOT, help='Location of dataset root directory')
     parser.add_argument('--show_images', default=False, type=str2bool, help='Plot images with bounding boxes')
+    parser.add_argument('--image_fusion', default=-1, type=int, help='[KAIST]: type of image fusion: [0: visible], [1: lwir] [...]')  # TODO VPY update when required
     args = parser.parse_args()
     return args
 
 
-def test_net(save_folder, net, cuda, testset, transform, thresh, show_images):
+def test_net(save_folder, net, cuda, testset, transform, thresh, show_images, labelmap):
     # dump predictions and assoc. ground truth to text file for now
     filename = os.path.join(save_folder,'gt_and_predictions.txt')
 
@@ -52,7 +50,7 @@ def test_net(save_folder, net, cuda, testset, transform, thresh, show_images):
         img = testset.pull_image(i)
         img_gt = img.copy()
         img_det = img.copy()
-        img_id, annotation = testset.pull_anno(i)
+        img_id, annotation, _ = testset.pull_anno(i)
         x = torch.from_numpy(transform(img)[0]).permute(2, 0, 1)
         x = Variable(x.unsqueeze(0))
         if cuda:
@@ -96,7 +94,7 @@ def test_net(save_folder, net, cuda, testset, transform, thresh, show_images):
                     with open(filename, mode='a') as f:
                         f.write('PREDICTIONS: '+'\n')
                 score = detections[0, i, j, 0]
-                label_name = VOClabelmap[i-1]
+                label_name = labelmap[i-1]
                 pt = (detections[0, i, j, 1:]*scale).cpu().numpy()
                 coords = (pt[0], pt[1], pt[2], pt[3])
                 pred_num += 1
@@ -116,7 +114,7 @@ def test_net(save_folder, net, cuda, testset, transform, thresh, show_images):
         # Plot image, GT and dets
         # --------------------------
         if show_images:
-            cv2.imshow("Image", np.hstack((img_gt, img_det)))
+            cv2.imshow("GT || DET", np.hstack((img_gt, img_det))[:,:,(2,1,0)])
             cv2.waitKey(0)
 
 
@@ -127,7 +125,7 @@ if __name__ == '__main__':
     if args.cuda and torch.cuda.is_available():
         torch.set_default_tensor_type('torch.cuda.FloatTensor')
     else:
-        torch.set_default_tensor_type('torch.FloatTensor')
+        torch.set_default_tensor_type('torch.FloatTensor')q
 
     if not os.path.exists(args.save_folder):
         os.mkdir(args.save_folder)
@@ -135,9 +133,11 @@ if __name__ == '__main__':
     # load net
     if args.dataset_type == 'VOC':
         num_classes = len(VOClabelmap) + 1 # +1 background
+        labelmap = VOClabelmap
         net = build_ssd('test', 300, num_classes, "VOC") # initialize SSD
     elif args.dataset_type == 'KAIST':
         num_classes = len(KAISTlabelmap) + 1  # +1 background
+        labelmap = KAISTlabelmap
         net = build_ssd('test', 300, num_classes, "KAIST")  # initialize SSD
     else:
         raise NotImplementedError
@@ -157,7 +157,7 @@ if __name__ == '__main__':
     if args.dataset_type == 'VOC':
         testset = VOCDetection(root=args.dataset_root, image_sets=[('2007', 'test')], transform=None, target_transform=VOCAnnotationTransform())
     elif args.dataset_type == 'KAIST':
-        testset = KAISTDetection(root=args.dataset_root, image_set=args.image_set, transform=None, target_transform=KAISTAnnotationTransform(), dataset_name='KAIST', image_fusion=0) #TODO VPY image fusion
+        testset = KAISTDetection(root=args.dataset_root, image_set=args.image_set, transform=None, target_transform=KAISTAnnotationTransform(), dataset_name='KAIST', image_fusion=args.image_fusion)
     else:
         raise NotImplementedError
 
@@ -165,5 +165,5 @@ if __name__ == '__main__':
         net = net.cuda()
         cudnn.benchmark = True
     # evaluation
-    test_net(save_folder=args.save_folder, net=net, cuda=args.cuda, testset=testset, transform=BaseTransform(net.size, (104, 117, 123)), thresh=args.visual_threshold, show_images=args.show_images) #TODO VPY: MEAN ?!
+    test_net(save_folder=args.save_folder, net=net, cuda=args.cuda, testset=testset, transform=BaseTransform(net.size, (104, 117, 123)), thresh=args.visual_threshold, show_images=args.show_images, labelmap=labelmap) #TODO VPY: MEAN ?!
 
