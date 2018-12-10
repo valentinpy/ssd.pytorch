@@ -91,14 +91,18 @@ class KAISTDetection(data.Dataset):
                  image_set='VPY-train-day.txt',
                  transform=None, target_transform=KAISTAnnotationTransform(),
                  dataset_name='KAIST',
-                 image_fusion=0):
+                 image_fusion=0,
+                 corrected_annotations = False):
         print("{}: ImageSet used is : {}".format(dataset_name, image_set))
         self.root = root
         self.image_set = image_set
         self.transform = transform
         self.target_transform = target_transform
         self.name = dataset_name
-        self._annopath = osp.join('%s', 'annotations', '%s', '%s', '%s.txt')
+        if corrected_annotations:
+            self._annopath = osp.join('%s', 'annotations_corrected', '%s', '%s', '%s.txt')
+        else:
+            self._annopath = osp.join('%s', 'annotations', '%s', '%s', '%s.txt')
         self._img_vis_root_path = osp.join('%s', 'images', '%s', '%s', 'visible', '%s.jpg')
         self._img_lwir_root_path = osp.join('%s', 'images', '%s', '%s', 'lwir', '%s.jpg')
         self.image_fusion = image_fusion
@@ -147,6 +151,7 @@ class KAISTDetection(data.Dataset):
 
         if self.transform is not None:
             target = np.array(target)
+            #print("VPY: img_id: {}, target: {}".format(img_id, target))
             img, boxes, labels = self.transform(img, target[:, :4], target[:, 4])
             # to rgb
             img = img[:, :, (2, 1, 0)]

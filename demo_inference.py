@@ -27,7 +27,9 @@ def arg_parser():
     parser.add_argument('--cuda', default=True, type=bool, help='Use cuda to train model')
     parser.add_argument('--dataset_root', default=VOC_ROOT, help='Location of dataset root directory')
     parser.add_argument('--show_images', default=False, type=str2bool, help='Plot images with bounding boxes')
-    parser.add_argument('--image_fusion', default=-1, type=int, help='[KAIST]: type of image fusion: [0: visible], [1: lwir] [...]')  # TODO VPY update when required
+    parser.add_argument('--image_fusion', default=-1, type=int, help='[KAIST]: type of image fusion: [0: visible], [1: lwir] [2: lwir inverted] [...]')  # TODO VPY update when required
+    parser.add_argument('--corrected_annotations', default=False, type=str2bool, help='[KAIST] do we use the corrected annotations ? (must ahve compatible imageset (VPY-test-strict-type-5)')
+
     args = parser.parse_args()
     return args
 
@@ -125,7 +127,7 @@ if __name__ == '__main__':
     if args.cuda and torch.cuda.is_available():
         torch.set_default_tensor_type('torch.cuda.FloatTensor')
     else:
-        torch.set_default_tensor_type('torch.FloatTensor')q
+        torch.set_default_tensor_type('torch.FloatTensor')
 
     if not os.path.exists(args.save_folder):
         os.mkdir(args.save_folder)
@@ -157,7 +159,7 @@ if __name__ == '__main__':
     if args.dataset_type == 'VOC':
         testset = VOCDetection(root=args.dataset_root, image_sets=[('2007', 'test')], transform=None, target_transform=VOCAnnotationTransform())
     elif args.dataset_type == 'KAIST':
-        testset = KAISTDetection(root=args.dataset_root, image_set=args.image_set, transform=None, target_transform=KAISTAnnotationTransform(), dataset_name='KAIST', image_fusion=args.image_fusion)
+        testset = KAISTDetection(root=args.dataset_root, image_set=args.image_set, transform=None, target_transform=KAISTAnnotationTransform(), dataset_name='KAIST', image_fusion=args.image_fusion, corrected_annotations=args.corrected_annotations)
     else:
         raise NotImplementedError
 
