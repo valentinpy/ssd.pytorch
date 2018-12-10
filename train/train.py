@@ -55,7 +55,7 @@ def arg_parser():
     parser.add_argument('--save_folder', default='checkpoints',
                         help='Directory for saving checkpoint models')
     parser.add_argument('--image_fusion', default=-1, type=int,
-                        help='[KAIST]: type of image fusion: [0: visible], [1: lwir] [...]') #TODO VPY update when required
+                        help='[KAIST]: type of image fusion: [0: visible], [1: lwir] [2: lwir inverted][...]') #TODO VPY update when required
     parser.add_argument('--show_dataset', default=False, type=str2bool,
                         help='Show every image used ?')
     args = parser.parse_args()
@@ -257,7 +257,7 @@ def train(args):
         loc_loss += loss_l.data.item()
         conf_loss += loss_c.data.item()
 
-        if iteration % 10 == 0:
+        if iteration % 100 == 0:
             print(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S") + " | " + args.dataset + ': iter ' + repr(iteration) + ' || lr: %g || Loss: %.4f (loc: %.4f, conf: %.4f) ||' %
                   (optimizer.param_groups[0]['lr'], loss.data.item(), loss_l.data.item(), loss_c.data.item()), end=' ')
             print('data: %.3fms, batch: %.3fs' % (data_time*1000, batch_time))
