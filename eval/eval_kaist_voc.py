@@ -32,6 +32,7 @@ def arg_parser():
     parser.add_argument('--confidence_threshold', default=0.01, type=float, help='Detection confidence threshold')
     parser.add_argument('--cuda', default=True, type=str2bool, help='Use cuda to train model')
     parser.add_argument('--dataset_root', default=None, help='Location of dataset root directory')
+    parser.add_argument('--image_fusion', default=-1, type=int, help='[KAIST]: type of image fusion: [0: visible], [1: lwir] [2: inverted LWIR] [...]')  # TODO VPY update when required
     args = parser.parse_args()
     return args
 
@@ -75,7 +76,7 @@ if __name__ == '__main__':
         dataset = VOCDetection(root=args.dataset_root, image_sets=[('2007', set_type)], transform=BaseTransform(300, dataset_mean), target_transform=VOCAnnotationTransform(), dataset_name="VOC")
     elif args.dataset_type == "KAIST":
         #dataset_mean = tuple(compute_KAIST_dataset_mean(args.dataset_root, args.image_set))
-        dataset = KAISTDetection(root=args.dataset_root,image_set=args.image_set, transform=BaseTransform(300, dataset_mean), target_transform=KAISTAnnotationTransform(), dataset_name="KAIST")
+        dataset = KAISTDetection(root=args.dataset_root,image_set=args.image_set, transform=BaseTransform(300, dataset_mean), target_transform=KAISTAnnotationTransform(), dataset_name="KAIST", image_fusion=args.image_fusion)
     else:
         print("Dataset not implemented")
         raise NotImplementedError
