@@ -2,6 +2,7 @@ import sys
 import os
 from glob import glob
 import argparse
+import random
 
 def str2bool(v):
     return v.lower() in ("yes", "true", "t", "1")
@@ -21,9 +22,6 @@ def arg_parser():
                         help='Output file name')
     parser.add_argument('--output_folder', default="/home/valentinpy/data/kaist/rgbt-ped-detection/data/kaist-rgbt/imageSets/",
                         help='Output folder')
-
-    parser.add_argument('--day_only', default=True, type=str2bool,
-                        help='Only day')
 
     parser.add_argument('--use_set00_01_02', default=False, type=str2bool,
                         help='Use set00_01_02')
@@ -67,10 +65,6 @@ def argcheck(args):
             print("output folder not found!")
             sys.exit(-1)
 
-        if args.day_only is not True:
-            print("Only day supported yet")
-            sys.exit(-1)
-
         set_used = 0
         if args.use_set00_01_02:
             set_used+=1
@@ -81,8 +75,8 @@ def argcheck(args):
         if args.use_set09_10_11:
             set_used+=1
 
-        if set_used is not 1:
-            print("only one set can be chosen at a time")
+        if (set_used > 2) or (set_used == 0):
+            print("only one or 2 set can be chosen at a time")
             sys.exit(-1)
 
         if args.max_images == -1:
@@ -150,18 +144,20 @@ def parse_annotations(args):
 
     # get all annotation files in the sets (set 0-2 or set 6-8)
     annotations_folder = os.path.join(args.dataset_root, 'rgbt-ped-detection/data/kaist-rgbt/annotations')
-    annotation_files = [y for x in os.walk(annotations_folder) for y in glob(os.path.join(x[0], '*.txt'))]
+    annotation_files_all = [y for x in os.walk(annotations_folder) for y in glob(os.path.join(x[0], '*.txt'))]
+    annotation_files=[]
 
     if args.use_set00_01_02:
-        annotation_files = [x for x in annotation_files if (("set00" in x) or ("set01" in x) or ("set02" in x))] #train day
-    elif args.use_set06_07_08:
-        annotation_files = [x for x in annotation_files if (("set06" in x) or ("set07" in x) or ("set08" in x))] #test day
-    elif args.use_set03_04_05:
-        annotation_files = [x for x in annotation_files if (("set03" in x) or ("set04" in x) or ("set05" in x))] #train night
-    elif args.use_set09_10_11:
-        annotation_files = [x for x in annotation_files if (("set09" in x) or ("set10" in x) or ("set11" in x))] #test night
-    else:
-        sys.exit(-1)
+        annotation_files += [x for x in annotation_files_all if (("set00" in x) or ("set01" in x) or ("set02" in x))] #train day
+    if args.use_set03_04_05:
+        annotation_files += [x for x in annotation_files_all if (("set03" in x) or ("set04" in x) or ("set05" in x))]  # train night
+    if args.use_set06_07_08:
+        annotation_files += [x for x in annotation_files_all if (("set06" in x) or ("set07" in x) or ("set08" in x))] #test day
+    if args.use_set09_10_11:
+        annotation_files += [x for x in annotation_files_all if (("set09" in x) or ("set10" in x) or ("set11" in x))] #test night
+
+    # randomize data:
+    random.shuffle(annotation_files)
 
     #open output imageSet file
     with open(os.path.join(args.output_folder, args.output_file), "w") as imageset_file:
