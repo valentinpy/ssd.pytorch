@@ -44,6 +44,7 @@ class KAISTAnnotationTransform(object):
             sys.exit(-1)
 
         res = []
+        raw_details = []
         with open(target) as f: #open annoatation file and read all lines
             for line in f.readlines():
                 if line.startswith("person "): # only one class supported: "person"
@@ -60,9 +61,10 @@ class KAISTAnnotationTransform(object):
                     bbox.append(label_idx)
 
                     res += [bbox]
+                    raw_details += [line]
                     #print("bounding box: {}".format(bbox))
 
-        return res #return all annoations: [[x1min, y1min, x1max, y1max, label_idx=0], [...] ]
+        return res, raw_details #return all annoations: [[x1min, y1min, x1max, y1max, label_idx=0], [...] ]
 
 class KAISTDetection(data.Dataset):
     """KAIST Detection Dataset Object
@@ -144,7 +146,7 @@ class KAISTDetection(data.Dataset):
         height, width, channels = img.shape
 
         if self.target_transform is not None:
-            target = self.target_transform(target, width, height)
+            target, _ = self.target_transform(target, width, height)
         else:
             print("You are required to implement the target_transform method to read annotations!")
             sys.exit(-1)
@@ -244,11 +246,11 @@ class KAISTDetection(data.Dataset):
         img_id = self.ids[index]
         target = self._annopath % img_id[0:4]
         if self.target_transform is not None:
-            gt = self.target_transform(target, 1, 1) # TODO VPY OK ??
+            gt, raw_details = self.target_transform(target, 1, 1) # TODO VPY OK ??
         else:
             print("no target transform function!")
             sys.exit(-1)
-        return img_id[4], gt, None
+        return img_id[4], gt, raw_details
 
     def pull_tensor(self, index):
         '''Returns the original image at an index in tensor form
