@@ -110,7 +110,7 @@ def test_net(save_folder, net, cuda, testset, transform, thresh, show_images, la
                               (255, 0, 0),
                               1
                               )
-                cv2.putText(img_det, label_name, (int(pt[2]), int(pt[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1, cv2.LINE_AA)
+                cv2.putText(img_det, np.array2string((score.data*100).cpu().numpy().astype(int)), (int(pt[2]), int(pt[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1, cv2.LINE_AA)
 
         # --------------------------
         # Plot image, GT and dets
