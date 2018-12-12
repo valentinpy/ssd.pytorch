@@ -126,3 +126,7 @@ checkpoints/
 
 # pylint
 .pylintrc
+
+gt_and_predictions.txt
+*-venv/
+output/
