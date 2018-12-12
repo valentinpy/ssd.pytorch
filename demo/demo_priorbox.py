@@ -1,5 +1,5 @@
 import torch
-from models.ssd import build_ssd
+from models.vgg16_ssd import build_ssd
 from layers import *
 from data import kaist
 

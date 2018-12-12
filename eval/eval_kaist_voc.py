@@ -9,7 +9,7 @@ import torch.backends.cudnn as cudnn
 
 import argparse
 
-from models.ssd import build_ssd
+from models.vgg16_ssd import build_ssd
 
 from data import BaseTransform
 from data import VOC_ROOT, VOCAnnotationTransform, VOCDetection

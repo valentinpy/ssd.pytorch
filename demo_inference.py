@@ -13,7 +13,7 @@ from data import KAISTAnnotationTransform, KAISTDetection
 from data import KAIST_CLASSES as KAISTlabelmap
 
 from utils.misc import str2bool
-from models.ssd import build_ssd
+from models.vgg16_ssd import build_ssd
 import cv2
 import numpy as np
 

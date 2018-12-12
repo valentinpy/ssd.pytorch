@@ -1,7 +1,7 @@
 from data import *
 from utils.augmentations import SSDAugmentation
 from layers.modules import MultiBoxLoss
-from models.ssd import build_ssd
+from models.vgg16_ssd import build_ssd
 import os
 import sys
 import time
@@ -15,9 +15,6 @@ import argparse
 import datetime
 import cv2
 from utils.misc import str2bool
-
-from data.kaist import compute_KAIST_dataset_mean
-
 
 def arg_parser():
     parser = argparse.ArgumentParser(description='Single Shot MultiBox Detector Training With Pytorch')
@@ -140,8 +137,6 @@ def train(args):
             print('Must specify dataset if specifying dataset_root')
             sys.exit(-1)
         cfg = voc
-        dataset_mean = compute_VOC_dataset_mean(args.dataset_root, args.image_set)
-
         dataset = VOCDetection(root=args.dataset_root, transform=SSDAugmentation(cfg['min_dim'], VOC_MEANS))
 
     elif args.dataset == 'KAIST':
@@ -154,8 +149,6 @@ def train(args):
 
         if args.show_dataset == True:
             show_dataset(args.dataset_root, args.image_set, args.image_fusion)
-        # dataset_mean = compute_KAIST_dataset_mean(args.dataset_root, args.image_set)
-        #dataset = KAISTDetection(root=args.dataset_root, image_set=args.image_set, transform=SSDAugmentation(cfg['min_dim'], tuple(dataset_mean)))
         dataset = KAISTDetection(root=args.dataset_root, image_set=args.image_set, transform=SSDAugmentation(cfg['min_dim'], VOC_MEANS), image_fusion=args.image_fusion)
     else:
         print("No dataset specified")
