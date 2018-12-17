@@ -3,8 +3,8 @@ import argparse
 import numpy as np
 
 from data import BaseTransform
-from data import KAISTAnnotationTransform, KAISTDetection
-from data import KAIST_CLASSES as KAISTlabelmap
+from data.kaist import KAISTAnnotationTransform, KAISTDetection
+from data.kaist import KAIST_CLASSES as KAISTlabelmap
 from eval.get_GT import get_GT
 import sys
 
@@ -19,7 +19,6 @@ def get_annotations_info(ground_truth):
 
     number_classes = 0
     number_annotations = 0
-    number_images = 0
 
     aspect_ratio = []
 
@@ -35,9 +34,6 @@ def get_annotations_info(ground_truth):
             if (img_annots['bbox'].shape[0]) == 0:
                  sys.exit(-1)
             for raw_annot in img_annots['raw_annotations']:
-
-                #print(raw_annot)
-
                 person_detected = False
                 people_detected = False
                 person_not_sure_detected = False
@@ -49,7 +45,6 @@ def get_annotations_info(ground_truth):
                 # for each file, exact flags
                 if raw_annot[0] == 'person':  # only keep images which contains a "person"
                     person_detected = True
-                    #print("person_detected")
                 elif raw_annot[0] == 'people':
                     people_detected = True
                     print("people detected")
@@ -63,7 +58,6 @@ def get_annotations_info(ground_truth):
                     print("Annotation not recognized!")
                     sys.exit(-1)
 
-                # print(annosplit[5])
                 if int(raw_annot[5]) != 0:
                     occlusion_detected = True
                     print("occlusion detected")
@@ -83,7 +77,6 @@ def get_annotations_info(ground_truth):
 
 
             for bbox in img_annots['bbox']:
-                #print(bbox)
                 xmin = bbox[0]
                 ymin = bbox[1]
                 xmax = bbox[2]
@@ -108,7 +101,7 @@ if __name__ == '__main__':
 
     labelmap = KAISTlabelmap
     dataset_mean = (104, 117, 123)  # TODO VPY and for kaist ?
-    dataset = KAISTDetection(root=args.dataset_root,image_set=args.image_set, transform=BaseTransform(300, dataset_mean), target_transform=KAISTAnnotationTransform(), dataset_name="KAIST", corrected_annotations=True)
+    dataset = KAISTDetection(root=args.dataset_root,image_set=args.image_set, transform=BaseTransform(300, dataset_mean), target_transform=KAISTAnnotationTransform(output_format='SSD'), dataset_name="KAIST", corrected_annotations=True)
 
     print('Read GT')
     ground_truth = get_GT(dataset, labelmap)
