@@ -27,3 +27,4 @@ if __name__ == '__main__':
         priors = priorbox.demo(mode="vert_only")
         # priors = priorbox.demo(mode="vert_med")
         # priors = priorbox.demo(mode="all")
+        # TODO VPY: add a parameter to set mode
