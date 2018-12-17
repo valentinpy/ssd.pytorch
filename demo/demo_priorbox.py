@@ -1,9 +1,20 @@
 import torch
-from models.vgg16_ssd import build_ssd
 from layers import *
-from data import kaist
+from config.parse_config import *
+import argparse
+
+def arg_parser():
+    parser = argparse.ArgumentParser(description='Single Shot MultiBox Detector Training With Pytorch')
+    parser.add_argument("--data_config_path", type=str, default=None, help="path to data config file")
+    args = parser.parse_args()
+    return args
 
 if __name__ == '__main__':
+    args = vars(arg_parser())
+    config = parse_data_config(args['data_config_path'])
+
+    args = {**args, **config}
+    del config
 
     # prepare environnement
     if torch.cuda.is_available():
@@ -11,9 +22,7 @@ if __name__ == '__main__':
     else:
         torch.set_default_tensor_type('torch.FloatTensor')
 
-    #build_ssd('test', 300, 2, 'KAIST')  # initialize net
-
-    priorbox = PriorBox(kaist)
+    priorbox = PriorBox(args)
     with torch.no_grad():
         priors = priorbox.demo(mode="vert_only")
         # priors = priorbox.demo(mode="vert_med")
