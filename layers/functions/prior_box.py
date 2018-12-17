@@ -70,7 +70,6 @@ class PriorBox(object):
                 cx = (j + 0.5) / f_k
                 cy = (i + 0.5) / f_k
 
-                #TODO VPY
                 if mode == "all":
                     # aspect_ratio: 1
                     # rel size: min_size
