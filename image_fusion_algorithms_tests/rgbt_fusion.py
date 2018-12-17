@@ -108,8 +108,8 @@ if __name__ == '__main__':
     #prepare datasets
     labelmap = KAISTlabelmap
     dataset_mean = (104, 117, 123)  # TODO VPY and for kaist ?
-    dataset_day = KAISTDetection(root=args.dataset_root,image_set=args.image_set_day, transform=BaseTransform(300, dataset_mean), target_transform=KAISTAnnotationTransform(), dataset_name="KAIST")
-    dataset_night = KAISTDetection(root=args.dataset_root, image_set=args.image_set_night, transform=BaseTransform(300, dataset_mean), target_transform=KAISTAnnotationTransform(), dataset_name="KAIST")
+    dataset_day = KAISTDetection(root=args.dataset_root,image_set=args.image_set_day, transform=BaseTransform(300, dataset_mean), target_transform=KAISTAnnotationTransform(output_format="SSD"), dataset_name="KAIST", output_format="SSD")
+    dataset_night = KAISTDetection(root=args.dataset_root, image_set=args.image_set_night, transform=BaseTransform(300, dataset_mean), target_transform=KAISTAnnotationTransform(output_format="SSD"), dataset_name="KAIST", output_format="SSD")
 
     # loop for all test images
     num_images = min(len(dataset_day), len(dataset_night))
@@ -124,13 +124,13 @@ if __name__ == '__main__':
             #day
             print("\nPulling DAY image: index: {}".format(index))
             img_visible_orig = dataset_day.pull_visible_image(index)
-            img_lwir_orig = dataset_day.pull_lwir_image(index)
+            img_lwir_orig = dataset_day.pull_raw_lwir_image(index)
             img_size = img_visible_orig.shape[::-1][1:3]
         else:
             #night
             print("\nPulling NGT image: index: {}".format(index))
             img_visible_orig = dataset_night.pull_visible_image(index)
-            img_lwir_orig = dataset_night.pull_lwir_image(index)
+            img_lwir_orig = dataset_night.pull_raw_lwir_image(index)
             img_size = img_visible_orig.shape[::-1][1:3]
         # get image + annotations + dimensions
 
@@ -161,6 +161,8 @@ if __name__ == '__main__':
         img_visible = normalize(img_visible)
         img_lwir = normalize(img_lwir)
         img_fused = normalize(img_fused)
+        img5 =np.zeros_like(img_fused)
+        img6 = np.zeros_like(img_fused)
 
 
         #---------------------------------------------
