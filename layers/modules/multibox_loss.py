@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-from data import coco as cfg
+# from data import coco as cfg
 from ..box_utils import match, log_sum_exp
 
 
@@ -30,13 +30,13 @@ class MultiBoxLoss(nn.Module):
         See: https://arxiv.org/pdf/1512.02325.pdf for more details.
     """
 
-    def __init__(self, num_classes, overlap_thresh, neg_pos, use_gpu=True):
+    def __init__(self, num_classes, overlap_thresh, neg_pos, use_gpu=True, variance=None):
         super(MultiBoxLoss, self).__init__()
         self.use_gpu = use_gpu
         self.num_classes = num_classes
         self.threshold = overlap_thresh
         self.negpos_ratio = neg_pos
-        self.variance = cfg['variance']
+        self.variance = variance
 
     def forward(self, predictions, targets):
         """Multibox Loss

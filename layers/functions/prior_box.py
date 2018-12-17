@@ -11,16 +11,16 @@ class PriorBox(object):
     """
     def __init__(self, cfg):
         super(PriorBox, self).__init__()
-        self.image_size = cfg['min_dim']
+        self.image_size = cfg['ssd_min_dim']
         # number of priors for feature map location (either 4 or 6)
-        self.num_priors = len(cfg['aspect_ratios'])
-        self.variance = cfg['variance'] or [0.1]
-        self.feature_maps = cfg['feature_maps']
-        self.min_sizes = cfg['min_sizes']
-        self.max_sizes = cfg['max_sizes']
-        self.steps = cfg['steps']
-        self.aspect_ratios = cfg['aspect_ratios']
-        self.clip = cfg['clip']
+        self.num_priors = len(cfg['ssd_aspect_ratios'])
+        self.variance = cfg['ssd_variance'] or [0.1]
+        self.feature_maps = cfg['ssd_feature_maps']
+        self.min_sizes = cfg['ssd_min_sizes']
+        self.max_sizes = cfg['ssd_max_sizes']
+        self.steps = cfg['ssd_steps']
+        self.aspect_ratios = cfg['ssd_aspect_ratios']
+        self.clip = cfg['ssd_clip']
         self.version = cfg['name']
         for v in self.variance:
             if v <= 0:

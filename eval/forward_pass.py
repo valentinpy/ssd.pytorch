@@ -17,7 +17,7 @@ def forward_pass(net, cuda, dataset, labelmap):
     for i in range(num_images):
 
         # get image + annotations + dimensions
-        im, gt, h, w = dataset.pull_item(i)
+        _, im, gt, h, w = dataset[i]
 
         x = Variable(im.unsqueeze(0))
         if cuda:

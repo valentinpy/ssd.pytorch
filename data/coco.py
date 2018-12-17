@@ -1,4 +1,4 @@
-from .config import HOME
+#from .config import HOME
 import os
 import os.path as osp
 import sys
@@ -8,7 +8,7 @@ import torchvision.transforms as transforms
 import cv2
 import numpy as np
 
-COCO_ROOT = osp.join(HOME, 'data/coco/')
+#COCO_ROOT = osp.join(HOME, 'data/coco/')
 IMAGES = 'images'
 ANNOTATIONS = 'annotations'
 COCO_API = 'PythonAPI'

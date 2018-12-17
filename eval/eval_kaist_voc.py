@@ -12,28 +12,30 @@ import argparse
 from models.vgg16_ssd import build_ssd
 
 from data import BaseTransform
-from data import VOC_ROOT, VOCAnnotationTransform, VOCDetection
-from data import VOC_CLASSES as VOClabelmap
-from data import KAISTAnnotationTransform, KAISTDetection
-from data import KAIST_CLASSES as KAISTlabelmap
+from data.voc0712 import VOCAnnotationTransform, VOCDetection
+from data.voc0712 import VOC_CLASSES as VOClabelmap
+from data.kaist import KAISTAnnotationTransform, KAISTDetection
+from data.kaist import KAIST_CLASSES as KAISTlabelmap
 from eval.get_GT import get_GT
 from eval.eval_tools import eval
 from eval.forward_pass import forward_pass
 
+from config.parse_config import *
 
-from utils.misc import str2bool
-from utils.misc import frange
+
+from utils.str2bool import str2bool
 
 def arg_parser():
     parser = argparse.ArgumentParser(description='Single Shot MultiBox Detector Evaluation')
-    parser.add_argument('--dataset_type', default='VOC', choices=['VOC', 'COCO', "KAIST"], type=str, help='VOC, COCO, KAIST (requires image_set)')
+    # parser.add_argument('--dataset_type', default='VOC', choices=['VOC', 'COCO', "KAIST"], type=str, help='VOC, COCO, KAIST (requires image_set)')
     parser.add_argument('--image_set', default=None, help='Imageset')
-    parser.add_argument('--trained_model', default='weights/ssd300_mAP_77.43_v2.pth', type=str, help='Trained state_dict file path to open')
-    parser.add_argument('--confidence_threshold', default=0.01, type=float, help='Detection confidence threshold')
-    parser.add_argument('--cuda', default=True, type=str2bool, help='Use cuda to train model')
-    parser.add_argument('--dataset_root', default=None, help='Location of dataset root directory')
+    parser.add_argument('--trained_model', default=None, type=str, help='Trained state_dict file path to open')
+    # parser.add_argument('--confidence_threshold', default=0.01, type=float, help='Detection confidence threshold')
+    # parser.add_argument('--cuda', default=True, type=str2bool, help='Use cuda to train model')
+    # parser.add_argument('--dataset_root', default=None, help='Location of dataset root directory')
     parser.add_argument('--image_fusion', default=-1, type=int, help='[KAIST]: type of image fusion: [0: visible], [1: lwir] [2: inverted LWIR] [...]')  # TODO VPY update when required
     parser.add_argument('--corrected_annotations', default=False, type=str2bool, help='[KAIST] do we use the corrected annotations ? (must ahve compatible imageset (VPY-test-strict-type-5)')
+    parser.add_argument("--data_config_path", type=str, default=None, help="path to data config file")
     args = parser.parse_args()
     return args
 
@@ -41,22 +43,26 @@ def arg_parser():
 if __name__ == '__main__':
 
     # parse arguments
-    args = arg_parser()
+    args = vars(arg_parser())
+    config = parse_data_config(args['data_config_path'])
+
+    args = {**args, **config}
+    del config
 
     # prepare environnement
     if torch.cuda.is_available():
-        if args.cuda:
+        if args['cuda']:
             torch.set_default_tensor_type('torch.cuda.FloatTensor')
-        if not args.cuda:
+        else:
             print("WARNING: It looks like you have a CUDA device, but aren't using CUDA.  Run with --cuda for optimal eval speed.")
             torch.set_default_tensor_type('torch.FloatTensor')
     else:
         torch.set_default_tensor_type('torch.FloatTensor')
 
     # configure according to dataset used
-    if args.dataset_type == "VOC":
+    if args['name'] == "VOC":
         labelmap = VOClabelmap
-    elif args.dataset_type == "KAIST":
+    elif args['name'] == "KAIST":
         labelmap = KAISTlabelmap
     else:
         print("Dataset not implemented")
@@ -67,22 +73,22 @@ if __name__ == '__main__':
 
     # load net
     num_classes = len(labelmap) + 1 # +1 for background
-    net = build_ssd('test', 300, num_classes, args.dataset_type) # initialize SSD
-    net.load_state_dict(torch.load(args.trained_model))
+    net = build_ssd(phase='test', size=300, num_classes=num_classes, dataset=args['name'], cfg=args) # initialize SSD
+    net.load_state_dict(torch.load(args['trained_model']))
     net.eval()
     print('Finished loading model!')
 
     # load data
-    if args.dataset_type == "VOC":
-        dataset = VOCDetection(root=args.dataset_root, image_sets=[('2007', set_type)], transform=BaseTransform(300, dataset_mean), target_transform=VOCAnnotationTransform(), dataset_name="VOC")
-    elif args.dataset_type == "KAIST":
+    if args['name'] == "VOC":
+        dataset = VOCDetection(root=args['dataset_root'], image_sets=[('2007', set_type)], transform=BaseTransform(300, dataset_mean), target_transform=VOCAnnotationTransform(), dataset_name="VOC")
+    elif args['name'] == "KAIST":
         #dataset_mean = tuple(compute_KAIST_dataset_mean(args.dataset_root, args.image_set))
-        dataset = KAISTDetection(root=args.dataset_root,image_set=args.image_set, transform=BaseTransform(300, dataset_mean), target_transform=KAISTAnnotationTransform(), dataset_name="KAIST", image_fusion=args.image_fusion, corrected_annotations=args.corrected_annotations)
+        dataset = KAISTDetection(root=args['dataset_root'],image_set=args['image_set'], transform=BaseTransform(300, dataset_mean), target_transform=KAISTAnnotationTransform(output_format="SSD"), dataset_name="KAIST", image_fusion=args['image_fusion'], corrected_annotations=args['corrected_annotations'])
     else:
         print("Dataset not implemented")
         raise NotImplementedError
 
-    if args.cuda:
+    if args['cuda']:
         net = net.cuda()
         cudnn.benchmark = True
 
@@ -90,7 +96,7 @@ if __name__ == '__main__':
     ground_truth = get_GT(dataset, labelmap)
 
     print("Forward pass")
-    det_image_ids, det_BB, det_confidence = forward_pass(net=net, cuda=args.cuda, dataset=dataset, labelmap=labelmap)
+    det_image_ids, det_BB, det_confidence = forward_pass(net=net, cuda=args['cuda'], dataset=dataset, labelmap=labelmap)
 
     # evaluation
     print('Evaluating detections')
