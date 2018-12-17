@@ -1,11 +1,5 @@
 import torch
 import argparse
-import numpy as np
-
-from data import BaseTransform
-from data import KAISTAnnotationTransform, KAISTDetection
-from data import KAIST_CLASSES as KAISTlabelmap
-from eval.get_GT import get_GT
 import sys
 from glob import glob
 import os
