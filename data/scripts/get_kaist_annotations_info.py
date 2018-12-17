@@ -3,8 +3,8 @@ import argparse
 import numpy as np
 
 from data import BaseTransform
-from data import KAISTAnnotationTransform, KAISTDetection
-from data import KAIST_CLASSES as KAISTlabelmap
+from data.kaist import KAISTAnnotationTransform, KAISTDetection
+from data.kaist import KAIST_CLASSES as KAISTlabelmap
 from eval.get_GT import get_GT
 
 
@@ -73,7 +73,7 @@ if __name__ == '__main__':
 
     labelmap = KAISTlabelmap
     dataset_mean = (104, 117, 123)  # TODO VPY and for kaist ?
-    dataset = KAISTDetection(root=args.dataset_root,image_set=args.image_set, transform=BaseTransform(300, dataset_mean), target_transform=KAISTAnnotationTransform(), dataset_name="KAIST")
+    dataset = KAISTDetection(root=args.dataset_root,image_set=args.image_set, transform=BaseTransform(300, dataset_mean), target_transform=KAISTAnnotationTransform(output_format='SSD'), dataset_name="KAIST")
 
     print('Read GT')
     ground_truth = get_GT(dataset, labelmap)
