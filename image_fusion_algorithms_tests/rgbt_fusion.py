@@ -8,8 +8,8 @@ import torch
 import argparse
 
 from data import BaseTransform
-from data import KAISTAnnotationTransform, KAISTDetection
-from data import KAIST_CLASSES as KAISTlabelmap
+from data.kaist import KAISTAnnotationTransform, KAISTDetection
+from data.kaist import KAIST_CLASSES as KAISTlabelmap
 from eval.get_GT import get_GT
 
 import cv2
@@ -22,14 +22,16 @@ from skimage.morphology import disk
 from skimage.filters import rank
 from skimage.util import img_as_ubyte
 
-from utils.misc import str2bool
+from utils.str2bool import str2bool
+from config.parse_config import *
+
 import random
 
 def arg_parser():
     parser = argparse.ArgumentParser(description='Image fusion tests')
     parser.add_argument('--image_set_day', default=None, help='Imageset day')
     parser.add_argument('--image_set_night', default=None, help='Imageset night')
-    parser.add_argument('--dataset_root', default=None, help='Location of dataset root directory')
+    parser.add_argument("--data_config_path", type=str, default=None, help="path to data config file")
     args = parser.parse_args()
     return args
 
@@ -92,7 +94,11 @@ def myplot(img1, img2, img3, img4, img5, img6, legend1=None, index=-1, legend2=N
 if __name__ == '__main__':
 
     # parse arguments
-    args = arg_parser()
+    args = vars(arg_parser())
+    config = parse_data_config(args['data_config_path'])
+
+    args = {**args, **config}
+    del config
 
     # prepare environnement
     if torch.cuda.is_available():
@@ -108,8 +114,8 @@ if __name__ == '__main__':
     #prepare datasets
     labelmap = KAISTlabelmap
     dataset_mean = (104, 117, 123)  # TODO VPY and for kaist ?
-    dataset_day = KAISTDetection(root=args.dataset_root,image_set=args.image_set_day, transform=BaseTransform(300, dataset_mean), target_transform=KAISTAnnotationTransform(output_format="SSD"), dataset_name="KAIST", output_format="SSD")
-    dataset_night = KAISTDetection(root=args.dataset_root, image_set=args.image_set_night, transform=BaseTransform(300, dataset_mean), target_transform=KAISTAnnotationTransform(output_format="SSD"), dataset_name="KAIST", output_format="SSD")
+    dataset_day = KAISTDetection(root=args['dataset_root'],image_set=args['image_set_day'], transform=BaseTransform(300, dataset_mean), target_transform=KAISTAnnotationTransform(output_format="SSD"), dataset_name="KAIST", output_format="SSD")
+    dataset_night = KAISTDetection(root=args['dataset_root'], image_set=args['image_set_night'], transform=BaseTransform(300, dataset_mean), target_transform=KAISTAnnotationTransform(output_format="SSD"), dataset_name="KAIST", output_format="SSD")
 
     # loop for all test images
     num_images = min(len(dataset_day), len(dataset_night))
@@ -170,6 +176,5 @@ if __name__ == '__main__':
         # --------------------------------------------
         myplot(img_visible_orig, img_visible, img_lwir, lwir_eq2, img5, img6, index=index, legend1='img_visible_orig', legend2='img_visible', legend3='img_lwir', legend4='lwir_eq2', legend5='', legend6='')
         #myplot(img_lwir, lwir_eq0, lwir_eq1,lwir_eq2, index=index, legend1='img_lwir', legend2='lwir_eq0', legend3='lwir_eq1', legend4='lwir_eq2')
-
 
     print("finished")
