@@ -166,5 +166,5 @@ if __name__ == '__main__':
         net = net.cuda()
         cudnn.benchmark = True
     # evaluation
-    test_net(save_folder=args['save_folder'], net=net, cuda=args['cuda'], testset=testset, transform=BaseTransform(net.size, (104, 117, 123)), thresh=args['visual_threshold'], labelmap=labelmap) #TODO VPY: MEAN ?!
+    test_net(save_folder=args['save_folder'], net=net, cuda=args['cuda'], testset=testset, transform=BaseTransform(net.size, (104, 117, 123)), thresh=args['ssd_visual_threshold'], labelmap=labelmap) #TODO VPY: MEAN ?!
 

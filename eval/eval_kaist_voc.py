@@ -27,12 +27,8 @@ from utils.str2bool import str2bool
 
 def arg_parser():
     parser = argparse.ArgumentParser(description='Single Shot MultiBox Detector Evaluation')
-    # parser.add_argument('--dataset_type', default='VOC', choices=['VOC', 'COCO', "KAIST"], type=str, help='VOC, COCO, KAIST (requires image_set)')
     parser.add_argument('--image_set', default=None, help='Imageset')
     parser.add_argument('--trained_model', default=None, type=str, help='Trained state_dict file path to open')
-    # parser.add_argument('--confidence_threshold', default=0.01, type=float, help='Detection confidence threshold')
-    # parser.add_argument('--cuda', default=True, type=str2bool, help='Use cuda to train model')
-    # parser.add_argument('--dataset_root', default=None, help='Location of dataset root directory')
     parser.add_argument('--image_fusion', default=-1, type=int, help='[KAIST]: type of image fusion: [0: visible], [1: lwir] [2: inverted LWIR] [...]')  # TODO VPY update when required
     parser.add_argument('--corrected_annotations', default=False, type=str2bool, help='[KAIST] do we use the corrected annotations ? (must ahve compatible imageset (VPY-test-strict-type-5)')
     parser.add_argument("--data_config_path", type=str, default=None, help="path to data config file")
@@ -45,7 +41,6 @@ if __name__ == '__main__':
     # parse arguments
     args = vars(arg_parser())
     config = parse_data_config(args['data_config_path'])
-
     args = {**args, **config}
     del config
 
