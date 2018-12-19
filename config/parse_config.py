@@ -18,35 +18,6 @@ def parse_model_config(path):
 
     return module_defs
 
-# def parse_data_config(path):
-#     """Parses the data configuration file"""
-#     options = dict()
-#     options['gpus'] = '0,1,2,3'
-#     options['num_workers'] = '10'
-#     with open(path, 'r') as fp:
-#         lines = fp.readlines()
-#     for line in lines:
-#         line = line.strip().replace(" ", "")
-#         if line == '' or line.startswith('#'):
-#             continue
-#         key, value = line.split('=')
-#
-#         # Convert to float all numeric values
-#         try:
-#             value = float(value.strip())
-#         except ValueError:
-#             value = value.strip()
-#
-#             # Convert to bool all bools
-#             if value.lower() in ("yes", "true"):
-#                 value = True
-#             elif value.lower() in ("no", "false"):
-#                 value = False
-#
-#         options[key.strip()] = value
-#
-#     return options
-
 def parse_data_config(path):
     """Parses the data configuration file"""
     options = dict()
@@ -55,7 +26,8 @@ def parse_data_config(path):
     with open(path, 'r') as fp:
         lines = fp.readlines()
         for line in lines:
-            line = line.strip() #.replace(" ", "")
+            line = line.split("#")[0]
+            line = line.strip()
             if line == '' or line.startswith('#') or line.startswith('['):
                 continue
             key, value = line.split('=')
