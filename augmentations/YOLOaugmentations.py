@@ -64,9 +64,9 @@ class Compose(object):
 #         return self.lambd(img, boxes, labels)
 #
 #
-# class ConvertFromInts(object):
-#     def __call__(self, image, boxes=None, labels=None):
-#         return image.astype(np.float32), boxes, labels
+class ConvertFromInts(object):
+    def __call__(self, image, boxes=None, labels=None):
+        return image.astype(np.float32)/np.max(image), boxes, labels
 #
 #
 # class SubtractMeans(object):
@@ -403,6 +403,7 @@ class YOLOaugmentation(object):
         self.mean = mean
         self.size = size
         self.augment = Compose([
+            ConvertFromInts(),
             Resize(self.size),
         ])
         # self.augment = Compose([
