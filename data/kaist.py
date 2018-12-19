@@ -12,7 +12,28 @@ KAIST_CLASSES = ('person', )
 
 # KAIST_ROOT = osp.join(HOME, 'data/kaist/')
 
-def detection_collate_KAIST(batch):
+def detection_collate_KAIST_YOLO(batch):
+    """Custom collate fn for dealing with batches of images that have a different
+    number of associated object annotations (bounding boxes).
+
+    Arguments:
+        batch: (tuple) A tuple of tensor images and lists of annotations
+
+    Return:
+        A tuple containing:
+            1) (tensor) batch of images stacked on their 0 dim
+            2) (list of tensors) annotations for a given image are stacked on
+                                 0 dim
+    """
+    targets = []
+    imgs = []
+    for sample in batch:
+        imgs.append(sample[1])
+        targets.append(torch.FloatTensor(sample[2]))
+    return torch.stack(imgs, 0), torch.stack(targets,0)
+
+
+def detection_collate_KAIST_SSD(batch):
     """Custom collate fn for dealing with batches of images that have a different
     number of associated object annotations (bounding boxes).
 
