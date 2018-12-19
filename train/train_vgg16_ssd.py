@@ -6,6 +6,7 @@ from models.vgg16_ssd import build_ssd
 import os
 import sys
 import time
+import glob
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -17,6 +18,7 @@ import datetime
 import cv2
 from utils.str2bool import str2bool
 from config.parse_config import *
+from utils.visualization import vis_plot
 
 
 def arg_parser():
@@ -41,7 +43,7 @@ def show_dataset(dataset_root, image_set, image_fusion):
     writer = cv2.VideoWriter('dataset.avi', fourcc, 30, (2048, 1024), isColor=True)
 
     dataset = KAISTDetection(root=dataset_root, image_set=image_set, transform=None, image_fusion=image_fusion)
-    data_loader = data.DataLoader(dataset, 1, num_workers=1, shuffle=True, collate_fn=detection_collate_KAIST, pin_memory=True)
+    data_loader = data.DataLoader(dataset, 1, num_workers=1, shuffle=True, collate_fn=detection_collate_KAIST_SSD, pin_memory=True)
     batch_iterator = iter(data_loader)
     i = 0
     for i in range(len(dataset)):  # while True:# iteration in range(args.start_iter, cfg['max_iter']):
@@ -95,7 +97,7 @@ def compute_VOC_dataset_mean(dataset_root, image_set):
     print("image mean is: {}".format(images_mean))
     return images_mean
 
-def train(args):
+def train(args, viz = None):
     # if args.dataset == 'COCO':
     #     cfg = coco
     #     dataset = COCODetection(root=args.dataset_root, transform=SSDAugmentation(cfg['min_dim'], VOC_MEANS)) # TODO VPY VOC MEANS ?!
@@ -139,7 +141,7 @@ def train(args):
         ssd_net.loc.apply(weights_init)
         ssd_net.conf.apply(weights_init)
 
-    optimizer = optim.SGD(net.parameters(), lr=args['lr'], momentum=args['momentum'], weight_decay=args['weight_decay'])
+    optimizer = optim.SGD(net.parameters(), lr=args['ssd_lr'], momentum=args['ssd_momentum'], weight_decay=args['ssd_weight_decay'])
     criterion = MultiBoxLoss(args['classes'], 0.5, 3, args['cuda'], args['ssd_variance'])
 
     net.train()
@@ -150,7 +152,7 @@ def train(args):
     epoch = 0
     print('Loading the dataset...')
 
-    epoch_size = len(dataset) // args['batch_size']
+    epoch_size = len(dataset) // args['ssd_batch_size']
 
     print('Dataset length: {}'.format(len(dataset)))
     print('Epoch size: {}'.format(epoch_size))
@@ -162,15 +164,15 @@ def train(args):
     step_index = 0
 
     if args['visdom']:
-        vis_title = 'SSD.PyTorch on ' + dataset.name + '| lr: ' + repr(args['lr'])
+        vis_title = 'SSD.PyTorch on ' + dataset.name + '| lr: ' + repr(args['ssd_lr'])
         vis_legend = ['Loc Loss', 'Conf Loss', 'Total Loss']
-        iter_plot = create_vis_plot('Iteration', 'Loss', vis_title, vis_legend)
-        epoch_plot = create_vis_plot('Epoch', 'Loss', vis_title, vis_legend)
+        iter_plot = viz.create_vis_plot('Iteration', 'Loss', vis_title, vis_legend)
+        epoch_plot = viz.create_vis_plot('Epoch', 'Loss', vis_title, vis_legend)
 
     if args['name'] == 'VOC':
-        data_loader = data.DataLoader(dataset, args['batch_size'], num_workers=args['num_workers'], shuffle=True, collate_fn=detection_collate_VOC, pin_memory=True)
+        data_loader = data.DataLoader(dataset, args['ssd_batch_size'], num_workers=args['num_workers'], shuffle=True, collate_fn=detection_collate_VOC, pin_memory=True)
     elif args['name'] == 'KAIST':
-        data_loader = data.DataLoader(dataset, args['batch_size'], num_workers=args['num_workers'], shuffle=True, collate_fn=detection_collate_KAIST, pin_memory=True)
+        data_loader = data.DataLoader(dataset, args['ssd_batch_size'], num_workers=args['num_workers'], shuffle=True, collate_fn=detection_collate_KAIST_SSD, pin_memory=True)
     else:
         raise NotImplementedError
 
@@ -179,14 +181,14 @@ def train(args):
     for iteration in range(args['start_iter'], args['ssd_iters']):
         if args['visdom'] and iteration != 0 and (iteration % epoch_size == 0):
             epoch += 1
-            update_vis_plot(epoch, loc_loss, conf_loss, epoch_plot, None, 'append', epoch_size)
+            viz.update_vis_plot(epoch, loc_loss, conf_loss, epoch_plot, None, 'append', epoch_size)
             # reset epoch loss counters
             loc_loss = 0
             conf_loss = 0
 
         if iteration in args['ssd_lr_steps']:
             step_index += 1
-            adjust_learning_rate(optimizer, args['gamma'], step_index, args['lr'])
+            adjust_learning_rate(optimizer, args['ssd_gamma'], step_index, args['ssd_lr'])
 
         # load train data
         t0 = time.time()
@@ -221,7 +223,7 @@ def train(args):
             print('data: %.3fms, batch: %.3fs' % (data_time*1000, batch_time))
 
         if args['visdom']:
-            update_vis_plot(iteration, loss_l.data.item(), loss_c.data.item(), iter_plot, epoch_plot, 'append')
+            viz.update_vis_plot(iteration, loss_l.data.item(), loss_c.data.item(), iter_plot, epoch_plot, 'append')
 
         # save model at a given frequency during training and at the end
         if (iteration != 0 and iteration % args['save_frequency'] == 0) or (iteration==args['ssd_iters']-1):
@@ -256,40 +258,9 @@ def weights_init(m):
         m.bias.data.zero_()
 
 
-def create_vis_plot(_xlabel, _ylabel, _title, _legend):
-    return viz.line(
-        X=torch.zeros((1,)).cpu(),
-        Y=torch.zeros((1, 3)).cpu(),
-        opts=dict(
-            xlabel=_xlabel,
-            ylabel=_ylabel,
-            title=_title,
-            legend=_legend
-        )
-    )
-
-
-def update_vis_plot(iteration, loc, conf, window1, window2, update_type, epoch_size=1):
-    viz.line(
-        X=torch.ones((1, 3)).cpu() * iteration,
-        Y=torch.Tensor([loc, conf, loc + conf]).unsqueeze(0).cpu() / epoch_size,
-        win=window1,
-        update=update_type
-    )
-    # initialize epoch plot on first iteration
-    if iteration == 0:
-        viz.line(
-            X=torch.zeros((1, 3)).cpu(),
-            Y=torch.Tensor([loc, conf, loc + conf]).unsqueeze(0).cpu(),
-            win=window2,
-            update=True
-        )
-
-
 if __name__ == '__main__':
     args = vars(arg_parser())
     config = parse_data_config(args['data_config_path'])
-
     args = {**args, **config}
     del config
 
@@ -308,11 +279,21 @@ if __name__ == '__main__':
 
         if len(os.listdir(args['save_folder'])) != 0:
             print("Save directory is not empty! : {}".format(args['save_folder']))
-            sys.exit(-1)
+            if "tmp" in args['save_folder']:
+                print("but as the save folder contains 'tmp', we remove old data:")
+                files = glob.glob(args['save_folder']+'/*')
+                for f in files:
+                    if f.endswith('.weights') or f.endswith('.pth'):
+                        print("rm {}".format(f))
+                        os.remove(f)
+            else:
+                print("not a tmp folder, you must fix it yourself!")
+                sys.exit(-1)
 
         if args['visdom']:
-            import visdom
-            viz = visdom.Visdom()
+            viz =  vis_plot()
+        else:
+            viz = None
 
         if args['save_frequency'] < 0:
             print("save frequency must be > 0")
@@ -337,4 +318,4 @@ if __name__ == '__main__':
         print("Parameter {} must be defined in config file".format(error))
         sys.exit(-1)
 
-    train(args)
+    train(args, viz)
