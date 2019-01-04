@@ -88,7 +88,7 @@ class KAISTAnnotationTransform(object):
 
         res = []
         raw_details = []
-        if self.output_format == "SSD":
+        if self.output_format in {"SSD", "VOC_EVAL"}:
             with open(target) as f: #open annoatation file and read all lines
                 for line in f.readlines():
                     if line.startswith("person "): # only one class supported: "person"
