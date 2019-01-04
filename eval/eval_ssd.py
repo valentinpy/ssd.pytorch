@@ -4,13 +4,9 @@
     Licensed under The MIT License [see LICENSE for details]
 """
 
+import argparse
 import torch
 import torch.backends.cudnn as cudnn
-
-import argparse
-
-from models.vgg16_ssd import build_ssd
-
 from data import BaseTransform
 from data.voc0712 import VOCAnnotationTransform, VOCDetection
 from data.voc0712 import VOC_CLASSES as VOClabelmap
@@ -18,12 +14,10 @@ from data.kaist import KAISTAnnotationTransform, KAISTDetection
 from data.kaist import KAIST_CLASSES as KAISTlabelmap
 from eval.get_GT import get_GT
 from eval.eval_tools import eval
-from eval.forward_pass import forward_pass
-
+from eval.forward_pass import forward_pass_ssd
 from config.parse_config import *
-
-
 from utils.str2bool import str2bool
+from models.vgg16_ssd import build_ssd
 
 def arg_parser():
     parser = argparse.ArgumentParser(description='Single Shot MultiBox Detector Evaluation')
@@ -78,7 +72,7 @@ if __name__ == '__main__':
         dataset = VOCDetection(root=args['dataset_root'], image_sets=[('2007', set_type)], transform=BaseTransform(300, dataset_mean), target_transform=VOCAnnotationTransform(), dataset_name="VOC")
     elif args['name'] == "KAIST":
         #dataset_mean = tuple(compute_KAIST_dataset_mean(args.dataset_root, args.image_set))
-        dataset = KAISTDetection(root=args['dataset_root'],image_set=args['image_set'], transform=BaseTransform(300, dataset_mean), target_transform=KAISTAnnotationTransform(output_format="SSD"), dataset_name="KAIST", image_fusion=args['image_fusion'], corrected_annotations=args['corrected_annotations'])
+        dataset = KAISTDetection(root=args['dataset_root'],image_set=args['image_set'], transform=BaseTransform(300, dataset_mean), target_transform=KAISTAnnotationTransform(output_format="VOC_EVAL"), dataset_name="KAIST", image_fusion=args['image_fusion'], corrected_annotations=args['corrected_annotations'])
     else:
         print("Dataset not implemented")
         raise NotImplementedError
@@ -91,7 +85,7 @@ if __name__ == '__main__':
     ground_truth = get_GT(dataset, labelmap)
 
     print("Forward pass")
-    det_image_ids, det_BB, det_confidence = forward_pass(net=net, cuda=args['cuda'], dataset=dataset, labelmap=labelmap)
+    det_image_ids, det_BB, det_confidence = forward_pass_ssd(net=net, cuda=args['cuda'], dataset=dataset, labelmap=labelmap)
 
     # evaluation
     print('Evaluating detections')
