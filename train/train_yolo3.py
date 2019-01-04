@@ -141,7 +141,7 @@ def main(args):
             loss.backward()
             optimizer.step()
 
-            if batch_i % 100 == 0:
+            if iteration_total % 100 == 0:
                 print(
                     "[%s] [Epoch %d/%d, Batch %d/%d, total %d/%d] [Losses: x %f, y %f, w %f, h %f, conf %f, cls %f, total %f, recall: %.5f, precision: %.5f]"
                     % (
@@ -166,7 +166,7 @@ def main(args):
 
             model.seen += imgs.size(0)
 
-            if (((epoch*len(dataloader))+ batch_i) % (args['save_frequency']) == 0 ) and (epoch*len(dataloader)+ batch_i) > 0:
+            if ((iteration_total) % (args['save_frequency']) == 0 ) and (epoch*len(dataloader)+ batch_i) > 0:
                 model.save_weights("%s/YOLO3_%d.weights" % (args['save_folder'], epoch*len(dataloader)+batch_i))
                 print("Weights saved for epoch {}/{}, batch {}/{}".format(epoch, iters, batch_i, len(dataloader)))
 
