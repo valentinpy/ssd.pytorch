@@ -2,7 +2,7 @@ import numpy as np
 from eval.voc_ap import voc_ap
 
 
-def eval(gt_class_recs, det_BB, det_image_ids, det_confidence, labelmap, use_voc07_metric=True, verbose=True):
+def eval_results_voc(gt_class_recs, det_BB, det_image_ids, det_confidence, labelmap, use_voc07_metric=True, verbose=True):
     if verbose:
         print("\n----------------------------------------------------------------")
         print("Eval")
