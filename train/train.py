@@ -226,27 +226,34 @@ def train(args, viz = None):
                 if model_name == "SSD":
                     loc_loss = loss_l
                     conf_loss = loss_c
-                    cls_loss = -1
                     tot_loss = loss_l + loss_c
-                    recall = -1
-                    precision = -1
+                    print(
+                        "[%s] [Iteration: %d] [Batch %d/%d, Epoch %d/%d, total images %d/%d] [Losses: loc: %f, conf %f, total %f] [batch: %.3fms] " %
+                        (now,
+                         iteration_total,
+                         batch_i, len(data_loader),
+                         epoch, epochs,
+                         epoch * len(data_loader) + (batch_i * batch_size), epochs * len(data_loader) * batch_size,
+                         loc_loss, conf_loss, tot_loss,
+                         batch_time * 1000)
+                        )
+
                 elif model_name == "YOLO":
-                    loc_loss = -1
                     conf_loss = model.losses["conf"]
                     cls_loss = model.losses["cls"]
                     tot_loss = loss.item()
                     recall = model.losses["recall"]
                     precision = model.losses["precision"]
 
-                print("[%s] [Iteration: %d] [Batch %d/%d, Epoch %d/%d, total images %d/%d] [Losses: loc: %f, conf %f, cls %f, total %f, recall: %.5f, precision: %.5f] [batch: %.3fms] "%
-                      ( now,
-                        iteration_total,
-                        batch_i, len(data_loader),
-                        epoch, epochs,
-                        epoch * len(data_loader) + (batch_i * batch_size), epochs * len(data_loader) * batch_size,
-                        loc_loss, conf_loss, cls_loss, tot_loss, recall, precision,
-                        batch_time * 1000)
-                )
+                    print("[%s] [Iteration: %d] [Batch %d/%d, Epoch %d/%d, total images %d/%d] [Losses: conf %f, cls %f, total %f, recall: %.5f, precision: %.5f] [batch: %.3fms] "%
+                          ( now,
+                            iteration_total,
+                            batch_i, len(data_loader),
+                            epoch, epochs,
+                            epoch * len(data_loader) + (batch_i * batch_size), epochs * len(data_loader) * batch_size,
+                            conf_loss, cls_loss, tot_loss, recall, precision,
+                            batch_time * 1000)
+                    )
 
             model.seen += imgs.size(0)
 
