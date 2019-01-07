@@ -9,15 +9,17 @@ import torch
 import torch.backends.cudnn as cudnn
 from data import BaseTransform
 from data.voc0712 import VOCAnnotationTransform, VOCDetection
-from data.voc0712 import VOC_CLASSES as VOClabelmap
+# from data.voc0712 import VOC_CLASSES as VOClabelmap
 from data.kaist import KAISTAnnotationTransform, KAISTDetection
-from data.kaist import KAIST_CLASSES as KAISTlabelmap
+# from data.kaist import KAIST_CLASSES as KAISTlabelmap
 from eval.get_GT import get_GT
 from eval.eval_tools import eval
 from eval.forward_pass import forward_pass_ssd
 from config.parse_config import *
 from utils.str2bool import str2bool
 from models.vgg16_ssd import build_ssd
+from config.load_classes import load_classes
+
 
 def arg_parser():
     parser = argparse.ArgumentParser(description='Single Shot MultiBox Detector Evaluation')
@@ -49,13 +51,7 @@ if __name__ == '__main__':
         torch.set_default_tensor_type('torch.FloatTensor')
 
     # configure according to dataset used
-    if args['name'] == "VOC":
-        labelmap = VOClabelmap
-    elif args['name'] == "KAIST":
-        labelmap = KAISTlabelmap
-    else:
-        print("Dataset not implemented")
-        raise NotImplementedError
+    labelmap = load_classes(args['names'])
 
     dataset_mean = (104, 117, 123)  # TODO VPY and for kaist ?
     set_type = 'test'
