@@ -30,6 +30,7 @@ class SSD(nn.Module):
         self.phase = phase
         self.num_classes = num_classes
         self.cfg = cfg
+        self.seen = 0
 
         # if dataset == "COCO":
         #     self.cfg = coco
@@ -132,6 +133,13 @@ class SSD(nn.Module):
             print('Finished!')
         else:
             print('Sorry only .pth and .pkl files supported.')
+
+    def save_weights(self, saved_model_name=None):
+        if saved_model_name == None:
+            print("Must specify output file when saving")
+            sys.exit(-1)
+        print("Saving weights to file: {}".format(saved_model_name))
+        torch.save(self.state_dict(), saved_model_name)
 
 
 # This function is derived from torchvision VGG make_layers()
