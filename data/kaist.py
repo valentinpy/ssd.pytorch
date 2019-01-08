@@ -138,8 +138,7 @@ class KAISTDetection(data.Dataset):
                  transform=None, target_transform=None,
                  dataset_name='KAIST',
                  image_fusion=0,
-                 corrected_annotations = False,
-                 output_format="SSD"):
+                 corrected_annotations = False):
         """
         Kaist Dataset constructor
         :param root: (string): filepath to KAIST root folder. (root folder must contain "rgbt-ped-detection" folder)
@@ -149,15 +148,13 @@ class KAISTDetection(data.Dataset):
         :param dataset_name: (string, optional): which dataset to load (default: 'KAIST')
         :param image_fusion: (int): type of fusion used: [0: visible] [1: LWIR] [2: inverted LWIR] [...]
         :param corrected_annotations: (bool, default: False) do we want to use corrected annotations ? (not really working yet)
-        :param output_format: (str, default: SSD): Output format for SSD or YOLO (image size, annotations coordinates,...)
         """
-        print("{}: ImageSet used is : {}, for model: {}".format(dataset_name, image_set, output_format))
+        print("{}: ImageSet used is : {}".format(dataset_name, image_set))
         self.root = root
         self.image_set = image_set
         self.transform = transform
         self.target_transform = target_transform
         self.name = dataset_name
-        self.output_format = output_format
         self.corrected_annotations = corrected_annotations
         if target_transform == None:
             print("VPY: must add mannually target_transform=KAISTAnnotationTransform(...)")
@@ -182,18 +179,13 @@ class KAISTDetection(data.Dataset):
                 self.ids.append(tuple([rootpath] + line.replace('\n', '').replace('\r', '').split('/') + [line.replace('\n', '').replace('\r', '')]))
 
     def __getitem__(self, index):
-        if self.output_format == "SSD":
-            img_path, im, gt, h, w = self.pull_item_ssd(index)
-        elif self.output_format == "YOLO":
-            img_path, im, gt, h, w = self.pull_item_yolo(index)
-        else:
-            raise NotImplementedError
+        img_path, im, gt, h, w = self.pull_item(index)
         return img_path, im, gt, h, w
 
     def __len__(self):
         return len(self.ids)
 
-    def pull_item_ssd(self, index):
+    def pull_item(self, index):
         #TODO VPY: Only visible image is loaded (no lwir)
         img_id = self.ids[index]
 
@@ -228,44 +220,6 @@ class KAISTDetection(data.Dataset):
             # img = img.transpose(2, 0, 1)
             target = np.hstack((boxes, np.expand_dims(labels, axis=1)))
         return "not defined", torch.from_numpy(img).permute(2, 0, 1), target, height, width
-        # return torch.from_numpy(img), target, height, width
-
-    def pull_item_yolo(self, index):
-        #TODO VPY: Only visible image is loaded (no lwir)
-        img_id = self.ids[index]
-
-        #TODO VPY parse annotations => target
-        target = self._annopath % img_id[0:4]
-
-        if self.image_fusion == 0:
-            img = self.pull_visible_image(index)
-        elif self.image_fusion == 1:
-            img = self.pull_raw_lwir_image(index)
-        elif self.image_fusion == 2:
-            img = self.pull_raw_lwir_image(index)
-            img = 255-img
-        else:
-            print("image fusion not handled")
-            sys.exit(-1)
-
-        height, width, channels = img.shape
-
-        if self.target_transform is not None:
-            target, _ = self.target_transform(target, width, height)
-        else:
-            print("You are required to implement the target_transform method to read annotations!")
-            sys.exit(-1)
-
-        if self.transform is not None:
-            target = np.array(target)
-            #print("VPY: img_id: {}, target: {}".format(img_id, target))
-            img, boxes, labels = self.transform(img, target[:, :4], target[:, 4])
-            # to rgb
-            img = img[:, :, (2, 1, 0)]
-            # img = img.transpose(2, 0, 1)
-            target = np.hstack((boxes, np.expand_dims(labels, axis=1)))
-        return "not defined", torch.from_numpy(img).permute(2, 0, 1), target, height, width
-        # return torch.from_numpy(img), target, height, width
 
     def pull_image(self, index):
         #TODO VPY: Only visible image is loaded (no lwir)
