@@ -19,8 +19,6 @@ from eval.get_GT import get_GT
 from data import BaseTransform
 from models.vgg16_ssd import build_ssd
 from models.yolo3 import *
-from data.coco_list import *
-from data.voc0712 import VOCAnnotationTransform
 from eval.forward_pass import *
 from eval.eval_tools import eval_results_voc
 
@@ -70,12 +68,13 @@ def main(args):
                                     output_format=model_name)
 
     elif args['name'] == "VOC":
-        from data.voc0712 import VOCDetection, detection_collate_VOC
+        from data.voc0712 import VOCDetection
+        from data.voc0712 import VOCAnnotationTransform
         dataset = VOCDetection(root=args['dataset_root'], image_sets=[('2007', 'test')], transform=BaseTransform(300, dataset_mean), target_transform=VOCAnnotationTransform(), dataset_name="VOC")
 
     if args['name'] == 'COCO':
+        from data.coco_list import ListDataset
         dataset = ListDataset(list_path=args['validation_set'], img_size=args['yolo_img_size'])
-        # dataloader = DataLoader(dataset=dataset, batch_size=1, shuffle=False, num_workers=args["num_workers"], collate_fn=detection_collate_COCO_YOLO)
 
 
     # set up model
