@@ -2,12 +2,15 @@ import argparse
 import os
 import glob
 import sys
-
+import cv2
+from utils.timer import Timer
 from utils.str2bool import str2bool
 from config.parse_config import *
 from config.load_classes import load_classes
 from models.vgg16_ssd import build_ssd
 from models.yolo3 import *
+from models.yolo3_utils import *
+
 
 import torch
 import torch.backends.cudnn as cudnn
@@ -29,28 +32,109 @@ def arg_parser():
     args = {**args, **config}
     return args
 
-def test_net(net, cuda, dataset, conf_thresh, nms_thres, classes, transform):
+def test_net(model_name, net, cuda, dataset, conf_thres, nms_thres, classes, transform):
+    print('\nPerforming object detection:')
+
+    Tensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
+    _t = {'im_detect': Timer(), 'misc': Timer()}
+
     num_images = len(dataset)
+    num_classes = len(classes)
+
     for i in range(num_images):
-        print('Testing image {:d}/{:d}....'.format(i + 1, num_images))
+        _t['im_detect'].tic()
 
         # --------------------------
         # get image and GT
         # --------------------------
-        img = dataset.pull_image(i)
-        img_gt = img.copy()
-        img_det = img.copy()
+        img_gt= dataset.pull_image(i)
+        img_det = img_gt.copy()
         img_id, annotation, _ = dataset.pull_anno(i)
-        x = torch.from_numpy(transform(img)[0]).permute(2, 0, 1)
-        x = Variable(x.unsqueeze(0))
+
+        _, img,_,_,_ = dataset[i]
+        input_imgs = Variable(img.type(Tensor).unsqueeze(0))
+
         if cuda:
-            x = x.cuda()
+            input_imgs = input_imgs.cuda()
+
+        if model_name == "SSD":
+            y = net(input_imgs)
+            detections = y.data
+
+        elif model_name == "YOLO":
+            with torch.no_grad():
+                detections = net(input_imgs)
+                detections = non_max_suppression(detections, num_classes, conf_thres, nms_thres)  # (x1, y1, x2, y2, object_conf, class_score, class_pred)
+
+        # Log progress
+        detect_time = _t['im_detect'].toc(average=True)
+        print('Image: {}, Image inference Time: {}ms'.format(i, int(detect_time*1000)))
+
 
         # --------------------------
-        # forward pass
+        # Ground truth
         # --------------------------
-        y = net(x)
-        detections = y.data
+        gt_id_cnt = 0
+        for box in annotation:
+            gt_id_cnt += 1
+            label = [key for (key, value) in dataset.target_transform.class_to_ind.items() if value == box[4]][0]
+            cv2.rectangle(img_gt,
+                          (int(box[0]), int(box[1])),
+                          (int(box[2]), int(box[3])),
+                          (0, 255, 0),
+                          1)
+            cv2.putText(img_gt, label, (int(box[0]), int(box[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
+
+        # --------------------------
+        # Detections
+        # --------------------------
+        if model_name == "SSD":
+            scale = torch.Tensor([img_gt.shape[1], img_gt.shape[0], img_gt.shape[1], img_gt.shape[0]])
+            pred_num = 0
+            for i in range(detections.size(1)):  # loop for all classes
+                j = 0
+                while detections[0, i, j, 0] >= conf_thres:  # loop for all detection for the corresponding class
+                    score = detections[0, i, j, 0]
+                    pt = (detections[0, i, j, 1:] * scale).cpu().numpy()
+                    pred_num += 1
+                    j += 1
+                    cv2.rectangle(img_det,
+                                  (int(pt[0]), int(pt[1])),
+                                  (int(pt[2]), int(pt[3])),
+                                  (255, 0, 0),
+                                  1)
+                    cv2.putText(img_det, np.array2string((score.data * 100).cpu().numpy().astype(int)),
+                                (int(pt[2]), int(pt[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1, cv2.LINE_AA)
+
+        elif model_name == "YOLO":
+            scale = [img_gt.shape[1], img_gt.shape[0], img_gt.shape[1], img_gt.shape[0]]
+            scale = [elem / 416 for elem in scale]
+            if (detections is not None) and (detections[0] is not None):
+                detections = detections[0].cpu().numpy()
+                pred_num = 0
+                for i in range(detections.shape[0]):
+                    j = 0
+                    if detections[i, 4] >= conf_thres:
+                        score = detections[i, 4]
+                        xmin = int(detections[i, 0] * scale[0])
+                        xmax = int(detections[i, 2] * scale[2])
+                        ymin = int(detections[i, 1] * scale[1])
+                        ymax = int(detections[i, 3] * scale[3])
+                        label_name = repr(score)
+                        pred_num += 1
+                        j += 1
+                        cv2.rectangle(img_det,
+                                      (xmin, ymin),
+                                      (xmax, ymax),
+                                      (255, 0, 0),
+                                      1)
+                        cv2.putText(img_det, label_name, (xmax, ymin), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1, cv2.LINE_AA)
+
+        # --------------------------
+        # Plot image, GT and dets
+        # --------------------------
+        cv2.imshow("GT || DET", np.hstack((img_gt, img_det))[:, :, (2, 1, 0)])
+        cv2.waitKey(0)
 
 
 def main(args):
@@ -63,8 +147,6 @@ def main(args):
         torch.set_default_tensor_type('torch.cuda.FloatTensor')
     else:
         torch.set_default_tensor_type('torch.FloatTensor')
-
-    Tensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
 
     classes = load_classes(args['names'])
     num_classes = len(classes) + 1  # +1 for background
@@ -84,6 +166,8 @@ def main(args):
     # get augmentation function
     if model_name == "YOLO":
         from augmentations.YOLOaugmentations import YOLOaugmentation
+    elif model_name == "SSD":
+        from augmentations.SSDaugmentations import SSDAugmentationDemo
 
     # load data
     if dataset_name == 'VOC':
@@ -92,19 +176,17 @@ def main(args):
         dataset = VOCDetection(root=args['dataset_root'], image_sets=[('2007', 'test')], transform=None, target_transform=VOCAnnotationTransform())
     elif dataset_name == 'KAIST':
         from data.kaist import KAISTDetection, KAISTAnnotationTransform
-        transform_fct = YOLOaugmentation(args['yolo_img_size']) if model_name == "YOLO" else None
+        transform_fct = YOLOaugmentation(args['yolo_img_size']) if model_name == "YOLO" else SSDAugmentationDemo(300)
         dataset = KAISTDetection(root=args['dataset_root'], image_set=args['image_set'], transform=transform_fct,
                                  image_fusion=args['image_fusion'], corrected_annotations=args['corrected_annotations'],
-                                 output_format=model_name, target_transform=KAISTAnnotationTransform(output_format=model_name))
-        # dataloader = DataLoader(dataset=dataset, batch_size=1, shuffle=False, num_workers=args['num_workers'],
-        #                         collate_fn=detection_collate_KAIST_YOLO)
+                                 target_transform=KAISTAnnotationTransform(output_format="VOC_EVAL"))
     elif dataset_name == 'COCO':
         from data.coco_list import ListDataset
         dataset = ListDataset(list_path=args['validation_set'], img_size=args['yolo_img_size'])
     else:
         raise NotImplementedError
 
-    if args['cuda']:
+    if cuda:
         net = net.cuda()
         cudnn.benchmark = True
 
@@ -112,14 +194,14 @@ def main(args):
     if model_name == "YOLO":
         conf_thresh = args['yolo_conf_thres']
         nms_thres = args['yolo_nms_thres']
-        transform_fct = BaseTransform(args["ssd_min_dim"], (104, 117, 123))#None
+        transform_fct = BaseTransform(args["yolo_img_size"], (104, 117, 123))#None
 
     elif model_name == "SSD":
         conf_thresh = args['ssd_visual_threshold']
         nms_thres = None
         transform_fct = BaseTransform(net.size, (104, 117, 123))
 
-    test_net(net=net, cuda=cuda, dataset=dataset, conf_thresh=conf_thresh, nms_thres=nms_thres, classes=classes, transform=transform_fct)
+    test_net(model_name=model_name, net=net, cuda=cuda, dataset=dataset, conf_thres=conf_thresh, nms_thres=nms_thres, classes=classes, transform=transform_fct)
     # test_net(net=net, cuda=args['cuda'], testset=dataset, transform=BaseTransform(net.size, (104, 117, 123)), thresh=args['ssd_visual_threshold'], labelmap=classes) #TODO VPY: MEAN ?!
     # test_net(net=net, dataloader=dataloader, img_size=args['yolo_img_size'], classes=classes, conf_thres=args['yolo_conf_thres'], nms_thres=args['yolo_nms_thres'])#, testset=testset):#, transform=BaseTransform(net.size, (104, 117, 123)), thresh=args['ssd_visual_threshold'], labelmap=labelmap)  # TODO VPY: MEAN ?!
 
