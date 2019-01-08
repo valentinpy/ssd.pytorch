@@ -64,8 +64,7 @@ def main(args):
         transform_fct = BaseTransform(300, dataset_mean) if model_name == "SSD" else  YOLOaugmentation(args['yolo_img_size'])
 
         dataset = KAISTDetection(root=args['dataset_root'], image_set=args['image_set'], transform=transform_fct,
-                                    target_transform=KAISTAnnotationTransform(output_format="VOC_EVAL"), dataset_name="KAIST", image_fusion=args['image_fusion'], corrected_annotations=args['corrected_annotations'],
-                                    output_format=model_name)
+                                    target_transform=KAISTAnnotationTransform(output_format="VOC_EVAL"), dataset_name="KAIST", image_fusion=args['image_fusion'], corrected_annotations=args['corrected_annotations'])
 
     elif args['name'] == "VOC":
         from data.voc0712 import VOCDetection

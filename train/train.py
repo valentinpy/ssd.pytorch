@@ -84,7 +84,7 @@ def train(args, viz = None):
             dataset = KAISTDetection(root=args['dataset_root'], image_set=args['image_set'], transform=SSDAugmentation(args['ssd_min_dim']), image_fusion=args['image_fusion'], target_transform=KAISTAnnotationTransform(output_format="SSD"))
             data_loader = DataLoader(dataset, args['ssd_batch_size'], num_workers=args['num_workers'], shuffle=True, collate_fn=detection_collate_KAIST_SSD, pin_memory=True)
         elif model_name == "YOLO":
-            dataset = KAISTDetection(root=kaist_root, image_set=image_set, transform=YOLOaugmentation(args['yolo_img_size']), image_fusion=image_fusion, output_format="YOLO", target_transform=KAISTAnnotationTransform(output_format="YOLO"))
+            dataset = KAISTDetection(root=kaist_root, image_set=image_set, transform=YOLOaugmentation(args['yolo_img_size']), image_fusion=image_fusion, target_transform=KAISTAnnotationTransform(output_format="YOLO"))
             data_loader = torch.utils.data.DataLoader(
                 dataset=dataset,
                 batch_size=int(hyperparams['batch']),
