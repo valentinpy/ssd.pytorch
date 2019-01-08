@@ -221,7 +221,7 @@ def train(args, viz = None):
             batch_time = time.time() - t0
 
             # log progress
-            if iteration_total % 1 == 0:
+            if iteration_total % 50 == 0:
                 now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 if model_name == "SSD":
                     loc_loss = loss_l
