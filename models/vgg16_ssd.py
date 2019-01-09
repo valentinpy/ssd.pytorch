@@ -25,22 +25,12 @@ class SSD(nn.Module):
         head: "multibox head" consists of loc and conf conv layers
     """
 
-    def __init__(self, phase, size, base, extras, head, num_classes, dataset=None, cfg=None):
+    def __init__(self, phase, size, base, extras, head, num_classes, cfg=None):
         super(SSD, self).__init__()
         self.phase = phase
         self.num_classes = num_classes
         self.cfg = cfg
         self.seen = 0
-
-        # if dataset == "COCO":
-        #     self.cfg = coco
-        # elif dataset == "VOC":
-        #     self.cfg = voc
-        # elif dataset == "KAIST":
-        #     self.cfg = kaist
-        # else:
-        #     print("Bad dataset, not config found")
-        #     sys.exit(-1)
 
         self.priorbox = PriorBox(self.cfg)
         with torch.no_grad():
@@ -49,7 +39,7 @@ class SSD(nn.Module):
         self.size = size
 
         # SSD network
-        self.vgg = nn.ModuleList(base)
+        self.basenet = nn.ModuleList(base)
         # Layer learns to scale the l2 normalized features from conv4_3
         self.L2Norm = L2Norm(512, 20)
         self.extras = nn.ModuleList(extras)
@@ -86,14 +76,14 @@ class SSD(nn.Module):
 
         # apply vgg up to conv4_3 relu
         for k in range(23):
-            x = self.vgg[k](x)
+            x = self.basenet[k](x)
 
         s = self.L2Norm(x)
         sources.append(s)
 
         # apply vgg up to fc7
-        for k in range(23, len(self.vgg)):
-            x = self.vgg[k](x)
+        for k in range(23, len(self.basenet)):
+            x = self.basenet[k](x)
         sources.append(x)
 
         # apply extra layers and cache source layer outputs
@@ -218,7 +208,7 @@ mbox = {
 }
 
 
-def build_ssd(phase, size=300, num_classes=None, dataset=None, cfg=None): # TODO VPY: can we use dataset given at init?
+def build_vgg_ssd(phase, size=300, num_classes=None, cfg=None): # TODO VPY: can we use dataset given at init?
     if cfg==None:
         raise Exception
     if phase != "test" and phase != "train":
@@ -231,11 +221,8 @@ def build_ssd(phase, size=300, num_classes=None, dataset=None, cfg=None): # TODO
     if num_classes == None:
         print("num_classes not specified!")
         return
-    if dataset not in ("VOC", "COCO", "KAIST"):
-        print("Unsupported dataset: {}".format(dataset))
-        return
 
     base_, extras_, head_ = multibox(vgg(base[str(size)], 3),
                                      add_extras(extras[str(size)], 1024),
                                         mbox[str(size)], num_classes)
-    return SSD(phase, size, base_, extras_, head_, num_classes, dataset, cfg=cfg)
+    return SSD(phase, size, base_, extras_, head_, num_classes, cfg=cfg)
