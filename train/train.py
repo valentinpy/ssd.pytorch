@@ -93,7 +93,7 @@ def train(args, viz = None):
             data_loader = torch.utils.data.DataLoader(
                 dataset=dataset,
                 batch_size=batch_size,
-                shuffle=False,  # True,
+                shuffle=True,  # True,
                 num_workers=args['num_workers'],
                 collate_fn=detection_collate_KAIST_YOLO)
 
@@ -168,7 +168,7 @@ def train(args, viz = None):
     if args['visdom']:
         vis_title = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S - ")
         vis_title += str(model_name + ".PyTorch on '" + args["name"] + ' | lr: ' + str(learning_rate))
-        vis_legend = ['Model loss', 'n/d', 'Total Loss']
+        vis_legend = ['Model loss', 'n/d', 'Total Loss'] if model_name == "YOLO" else ['loc loss', 'conf loss', 'Total Loss']
         iter_plot = viz.create_vis_plot('Iteration', 'Loss', vis_title, vis_legend)
 
     epoch_size = len(dataset) // batch_size
@@ -215,8 +215,10 @@ def train(args, viz = None):
                 loss = loss_l + loss_c
                 loss.backward()
                 optimizer.step()
-                loc_loss += loss_l.data.item()
-                conf_loss += loss_c.data.item()
+                # loc_loss += loss_l.data.item()
+                # conf_loss += loss_c.data.item()
+                loc_loss = loss_l.data.item()
+                conf_loss = loss_c.data.item()
 
             batch_time = time.time() - t0
 
