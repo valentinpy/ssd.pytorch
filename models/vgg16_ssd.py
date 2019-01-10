@@ -208,7 +208,7 @@ mbox = {
 }
 
 
-def build_vgg_ssd(phase, size=300, num_classes=None, cfg=None): # TODO VPY: can we use dataset given at init?
+def build_vgg_ssd(phase, size=300, num_classes=None, cfg=None):
     if cfg==None:
         raise Exception
     if phase != "test" and phase != "train":

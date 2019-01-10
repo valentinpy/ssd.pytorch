@@ -5,6 +5,7 @@ from torch.autograd import Variable
 from layers import *
 # from data import voc, coco
 import os
+import sys
 
 
 class SSD(nn.Module):
@@ -45,7 +46,7 @@ class SSD(nn.Module):
 
         if phase == 'test':
             self.softmax = nn.Softmax(dim=-1)
-            self.detect = Detect(num_classes, 200, 0.01, 0.45)
+            self.detect = Detect(num_classes, top_k=200, conf_thresh=0.05, nms_thresh=0.45, variance=cfg['ssd_variance'])
 
     def forward(self, x):
         """Applies network layers and ops on input image(s) x.
@@ -118,6 +119,13 @@ class SSD(nn.Module):
             print('Finished!')
         else:
             print('Sorry only .pth and .pkl files supported.')
+
+    def save_weights(self, saved_model_name=None):
+        if saved_model_name == None:
+            print("Must specify output file when saving")
+            sys.exit(-1)
+        print("Saving weights to file: {}".format(saved_model_name))
+        torch.save(self.state_dict(), saved_model_name)
 
 
 def _make_divisible(v, divisor, min_value=None):
