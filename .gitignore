@@ -92,7 +92,9 @@ ENV/
 .remote-sync.json
 
 # weights
-#weights/
+*.pth
+*.weights
+
 
 #DS_Store
 .DS_Store
@@ -126,3 +128,7 @@ checkpoints/
 
 # pylint
 .pylintrc
+
+gt_and_predictions.txt
+*-venv/
+output/

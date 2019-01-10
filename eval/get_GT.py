@@ -39,7 +39,7 @@ def get_GT(dataset, labelmap):
                 print("Dataset not implemented")
                 raise NotImplementedError
 
-            gt_class_recs[img_id] = {'bbox': bbox, 'difficult': gt_difficult, 'det': det}
+            gt_class_recs[img_id] = {'bbox': bbox, 'difficult': gt_difficult, 'det': det, 'raw_annotations': detailed_gt}
         gt_all_classes_recs[j] = gt_class_recs
 
     return gt_all_classes_recs

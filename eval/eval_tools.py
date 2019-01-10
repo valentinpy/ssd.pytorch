@@ -2,7 +2,7 @@ import numpy as np
 from eval.voc_ap import voc_ap
 
 
-def eval(gt_class_recs, det_BB, det_image_ids, det_confidence, labelmap, use_voc07_metric=True, verbose=True):
+def eval_results_voc(gt_class_recs, det_BB, det_image_ids, det_confidence, labelmap, use_voc07_metric=True, verbose=True):
     if verbose:
         print("\n----------------------------------------------------------------")
         print("Eval")
@@ -10,7 +10,6 @@ def eval(gt_class_recs, det_BB, det_image_ids, det_confidence, labelmap, use_voc
         print('VOC07 metric? ' + ('Yes' if use_voc07_metric else 'No'))
     aps = []
     aps_dict = {}
-    tpfp_dict = {}
 
     # reset detections
     for i, class_rec in enumerate(gt_class_recs):
@@ -19,11 +18,9 @@ def eval(gt_class_recs, det_BB, det_image_ids, det_confidence, labelmap, use_voc
                 gt_class_recs[i][j]['det'][k] = False
 
     for i, cls in enumerate(labelmap):
-        #rec, prec, ap, npos, tp, fp_thresh, miss = voc_eval_class(gt_class_recs[i+1], det_BB[i+1], det_image_ids[i+1], det_confidence[i+1], ovthresh=0.5, use_07_metric=use_voc07_metric)
         rec, prec, ap = voc_eval_class(gt_class_recs[i + 1], det_BB[i + 1], det_image_ids[i + 1], det_confidence[i + 1], ovthresh=0.5, use_07_metric=use_voc07_metric)
         aps += [ap]
         aps_dict[cls] = ap
-        # tpfp_dict[cls] = {'npos': npos, 'tp': tp, 'fp_thresh':fp_thresh, 'miss': miss}
         if verbose:
             print('AP for {} = {:.4f}'.format(cls, ap))
 
@@ -56,8 +53,6 @@ def voc_eval_class(gt_class_recs, det_BB, det_image_ids, det_confidence, ovthres
     nd = len(det_image_ids)
     tp = np.zeros(nd)
     fp = np.zeros(nd)
-    # fp_thresh = np.zeros(nd)
-    # miss = npos
 
     # for each detection
     for d in range(nd):
@@ -86,27 +81,24 @@ def voc_eval_class(gt_class_recs, det_BB, det_image_ids, det_confidence, ovthres
             ovmax = np.max(overlaps)
             jmax = np.argmax(overlaps)
         if ovmax > ovthresh:
-            # fp_thresh[d] = 1
             if not gt_R['difficult'][jmax]:
                 if not gt_R['det'][jmax]:
                     tp[d] = 1.
                     gt_R['det'][jmax] = 1
-                    # miss -= 1
-                    # fp_thresh[d] = 0
                 else:
                     fp[d] = 1.
 
         else:
             fp[d] = 1.
-    print("ovthresh: {}, npos: {}, fp_thresh: {}, miss: {}".format(ovthresh, npos,  max(np.cumsum(fp_thresh)), miss))
 
     # compute precision recall
     fp = np.cumsum(fp)
-    # fp_thresh = np.cumsum(fp_thresh)
     tp = np.cumsum(tp)
     rec = tp / float(npos)
     # avoid divide by zero in case the first detection matches a difficult ground truth
     prec = tp / np.maximum(tp + fp, np.finfo(np.float64).eps)
     ap = voc_ap(rec, prec, use_07_metric)
 
-    return rec, prec, ap#, npos, max(tp), max(fp_thresh), miss
+    print("npos: {}, max(tp): {}, max(fp): {}".format(npos, max(tp), max(fp)))
+
+    return rec, prec, ap

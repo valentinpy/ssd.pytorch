@@ -1,7 +1,7 @@
 import torch
 from torch.autograd import Function
 from ..box_utils import decode, nms
-from data import voc as cfg
+# from data import voc as cfg
 
 
 class Detect(Function):
@@ -10,7 +10,7 @@ class Detect(Function):
     scores and threshold to a top_k number of output predictions for both
     confidence score and locations.
     """
-    def __init__(self, num_classes, top_k, conf_thresh, nms_thresh):
+    def __init__(self, num_classes, top_k, conf_thresh, nms_thresh, variance=None):
         self.num_classes = num_classes
         self.top_k = top_k
         # Parameters used in nms.
@@ -18,7 +18,7 @@ class Detect(Function):
         if nms_thresh <= 0:
             raise ValueError('nms_threshold must be non negative.')
         self.conf_thresh = conf_thresh
-        self.variance = cfg['variance']
+        self.variance = variance
 
     def forward(self, loc_data, conf_data, prior_data):
         """
@@ -32,6 +32,7 @@ class Detect(Function):
         """
         num = loc_data.size(0)  # batch size
         num_priors = prior_data.size(0)
+        #print("VPY: num priors: {}".format(num_priors))
         output = torch.zeros(num, self.num_classes, num_priors, 5)
         conf_preds = conf_data.view(num, num_priors,
                                     self.num_classes).transpose(2, 1)

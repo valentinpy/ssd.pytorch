@@ -1,296 +1,279 @@
-from data import *
-from utils.augmentations import SSDAugmentation
-from layers.modules import MultiBoxLoss
-from models.ssd import build_ssd
+import argparse
+from utils.str2bool import str2bool
+from config.parse_config import *
+from config.load_classes import load_classes
+import torch
 import os
 import sys
+import glob
 import time
-import torch
-import torch.nn as nn
-import torch.optim as optim
+import datetime
+
+from torch.autograd import Variable
+from torch.utils.data import DataLoader
+from utils.visualization import vis_plot
 import torch.backends.cudnn as cudnn
 import torch.nn.init as init
-import torch.utils.data as data
-import argparse
-import datetime
-import cv2
-from utils.misc import str2bool
-
-from data.kaist import compute_KAIST_dataset_mean
+import torch.optim as optim
+import torch.nn as nn
 
 
 def arg_parser():
-    parser = argparse.ArgumentParser(description='Single Shot MultiBox Detector Training With Pytorch')
-    # train_set = parser.add_mutually_exclusive_group()
-    parser.add_argument('--dataset', default='VOC', choices=['VOC', 'COCO', 'KAIST'],
-                        type=str, help='VOC, COCO or KAIST (requires image_set )')
-    parser.add_argument('--dataset_root', default=VOC_ROOT,
-                        help='Dataset root directory path')
-    parser.add_argument('--image_set', default=None,
-                        help='[KAIST] Imageset')
-    parser.add_argument('--basenet', default='./weights/vgg16_reducedfc.pth',
-                        help='Pretrained base model')
-    parser.add_argument('--batch_size', default=32, type=int,
-                        help='Batch size for training')
-    parser.add_argument('--resume', default=None, type=str,
-                        help='Checkpoint state_dict file to resume training from')
-    parser.add_argument('--start_iter', default=0, type=int,
-                        help='Resume training at this iter')
-    parser.add_argument('--save_frequency', default=5000, type=int,
-                        help='Frequency to save model [default: 5000 iters]')
-    parser.add_argument('--num_workers', default=4, type=int,
-                        help='Number of workers used in dataloading')
-    parser.add_argument('--cuda', default=True, type=str2bool,
-                        help='Use CUDA to train model')
-    parser.add_argument('--lr', '--learning-rate', default=1e-3, type=float,
-                        help='initial learning rate')
-    parser.add_argument('--momentum', default=0.9, type=float,
-                        help='Momentum value for optim')
-    parser.add_argument('--weight_decay', default=5e-4, type=float,
-                        help='Weight decay for SGD')
-    parser.add_argument('--gamma', default=0.1, type=float,
-                        help='Gamma update for SGD')
-    parser.add_argument('--visdom', default=False, type=str2bool,
-                        help='Use visdom for loss visualization')
-    parser.add_argument('--save_folder', default='checkpoints',
-                        help='Directory for saving checkpoint models')
-    parser.add_argument('--image_fusion', default=-1, type=int,
-                        help='[KAIST]: type of image fusion: [0: visible], [1: lwir] [...]') #TODO VPY update when required
-    parser.add_argument('--show_dataset', default=False, type=str2bool,
-                        help='Show every image used ?')
-    args = parser.parse_args()
+    parser = argparse.ArgumentParser(description='MobileNet2_SSD/YOLO3 Detector Training With Pytorch')
+    parser.add_argument('--image_set', default=None, help='[KAIST] Imageset')
+    parser.add_argument('--resume', default=None, type=str, help='Checkpoint state_dict file to resume training from')
+    parser.add_argument('--start_iter', default=0, type=int, help='Resume training at this iter')
+    parser.add_argument('--visdom', default=False, type=str2bool, help='Use visdom for loss visualization')
+    parser.add_argument('--save_folder', default='checkpoints', help='Directory for saving checkpoint models')
+    parser.add_argument('--image_fusion', default=-1, type=int, help='[KAIST]: type of image fusion: [0: visible], [1: lwir] [2: lwir inverted][...]') #TODO VPY update when required
+    parser.add_argument('--show_dataset', default=False, type=str2bool, help='Show every image used ?')
+    parser.add_argument("--data_config_path", type=str, default=None, help="path to data config file")
+    parser.add_argument("--model", type=str, default=None, help="Model to train, either 'VGG_SSD','MOBILENET2_SSD' or 'YOLO'")
+
+    args = vars(parser.parse_args())
+    config = parse_data_config(args['data_config_path'])
+    args = {**args, **config}
+
+    if args['model'] == "VGG_SSD":
+        args = {key.replace("vgg_", ""): value for key, value in args.items() if (not key.startswith("mobilenet")) and (not key.startswith("yolo"))}
+    elif args['model'] == "MOBILENET2_SSD":
+        args = {key.replace("mobilenet_", ""): value for key, value in args.items() if (not key.startswith("vgg")) and (not key.startswith("yolo"))}
+    elif args["model"] == "YOLO":
+        args = {key: value for key, value in args.items() if (not key.startswith("vgg")) and (not key.startswith("mobilenet"))}
+
 
     return args
 
+def train(args, viz = None):
+    model_name = args["model"]
+    dataset_name = args["name"]
+    imageset_name = args["image_set"].split("/")[-1].split(".")[0]
+    cuda = torch.cuda.is_available() and args['cuda']
 
-def show_dataset(dataset_root, image_set, image_fusion):
-    print("showing dataset")
+    Tensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
 
-    fourcc = cv2.VideoWriter_fourcc('M', 'P', 'E', 'G')
-    writer = cv2.VideoWriter('dataset.avi', fourcc, 30, (2048, 1024), isColor=True)
+    # get hyperparameters
+    if model_name in {"MOBILENET2_SSD", "VGG_SSD"}:
+        epochs = args['ssd_iters']
+        learning_rate = args['ssd_lr']
+        gamma = args['ssd_gamma']
+        batch_size = args["ssd_batch_size"]
+        ssd_min_dim = args["ssd_min_dim"]
+    elif model_name == "YOLO":
+        epochs = args['yolo_max_iters']
+        hyperparams = parse_model_config(args['yolo_model_config_path'])[0]
+        learning_rate = float(hyperparams["learning_rate"])
+        batch_size = int(hyperparams["batch"])
 
-    dataset = KAISTDetection(root=dataset_root, image_set=image_set, transform=None, image_fusion=image_fusion)
-    data_loader = data.DataLoader(dataset, 1, num_workers=1, shuffle=True, collate_fn=detection_collate, pin_memory=True)
-    batch_iterator = iter(data_loader)
-    i = 0
-    for i in range(len(dataset)):  # while True:# iteration in range(args.start_iter, cfg['max_iter']):
-        try:
-            # load train data
-            image, annotations = next(batch_iterator)
-            image = image[0].permute(1, 2, 0).numpy().astype(np.uint8).copy()
-            width = image.shape[1]
-            height = image.shape[0]
+    # get augmentation function
+    if model_name in {"MOBILENET2_SSD", "VGG_SSD"}:
+        from data.kaist import detection_collate_KAIST_SSD
+        from augmentations.SSDaugmentations import SSDAugmentation
+    elif model_name == "YOLO":
+        from data.kaist import detection_collate_KAIST_YOLO
+        from augmentations.YOLOaugmentations import YOLOaugmentation
 
-            for annotation in annotations:
-                annotation = (annotation.numpy())[0]
-                cv2.rectangle(image,
-                              (int(annotation[0] * width), int(annotation[1] * height)),
-                              (int(annotation[2] * width), int(annotation[3] * height)),
-                              (0, 255, 0),
-                              1
-                              )
-            cv2.imshow('decoded image', image)
-            cv2.waitKey(1)
-            writer.write(image)
-            print(image.mean(axis=(0, 1)))
-            time.sleep(1)
-        except StopIteration:
-            break
-    writer.release()
+    # load dataset
+    print('Preparing the dataset...')
+    if dataset_name == 'VOC':
+        from data.voc0712 import VOCDetection, detection_collate_VOC
+        dataset = VOCDetection(root=args['dataset_root'], transform=SSDAugmentation(ssd_min_dim))
+        data_loader = DataLoader(dataset, batch_size, num_workers=args['num_workers'], shuffle=True, collate_fn=detection_collate_VOC, pin_memory=True)
+    elif dataset_name == 'KAIST':
+        from data.kaist import KAISTDetection, KAISTAnnotationTransform
+        kaist_root = args["dataset_root"]
+        image_set = args["image_set"]
+        image_fusion = args["image_fusion"]
 
-def compute_VOC_dataset_mean(dataset_root, image_set):
-    print("compute images mean")
-    images_mean = np.zeros((3), dtype=np.float64)  # [0,0,0]
-    #
-    # # create batch iterator
-    dataset_mean = VOCDetection(root=dataset_root, transform=None)
-    data_loader_mean = data.DataLoader(dataset_mean, 1, num_workers=1, shuffle=False, collate_fn=detection_collate, pin_memory=True)
-    batch_iterator = iter(data_loader_mean)
-    i = 0
-    for i in range(len(dataset_mean)):  # while True:# iteration in range(args.start_iter, cfg['max_iter']):
-        # for i in range(100):
-        #     print("Debug: not all data!!!!!")
-        try:
-            # load train data
-            image, _ = next(batch_iterator)
-            images_mean += image[0].permute(1, 2, 0).numpy().mean(axis=(0, 1))
-        except StopIteration:
-            break
-    #         batch_iterator = iter(data_loader)
-    #         images, targets = next(batch_iterator)
-    # print(i)
-    # print("pre image mean is: {}".format(image_mean))
-    images_mean = images_mean / i
-    print("image mean is: {}".format(images_mean))
-    return images_mean
+        if model_name in {"MOBILENET2_SSD", "VGG_SSD"}:
+            dataset = KAISTDetection(root=args['dataset_root'], image_set=args['image_set'], transform=SSDAugmentation(ssd_min_dim), image_fusion=args['image_fusion'], target_transform=KAISTAnnotationTransform(output_format="SSD"))
+            data_loader = DataLoader(dataset, batch_size, num_workers=args['num_workers'], shuffle=True, collate_fn=detection_collate_KAIST_SSD, pin_memory=True)
+        elif model_name == "YOLO":
+            dataset = KAISTDetection(root=kaist_root, image_set=image_set, transform=YOLOaugmentation(args['yolo_img_size']), image_fusion=image_fusion, target_transform=KAISTAnnotationTransform(output_format="YOLO"))
+            data_loader = torch.utils.data.DataLoader(
+                dataset=dataset,
+                batch_size=batch_size,
+                shuffle=True,  # True,
+                num_workers=args['num_workers'],
+                collate_fn=detection_collate_KAIST_YOLO)
 
-def train(args):
-    if args.dataset == 'COCO':
-        if args.dataset_root == VOC_ROOT:
-            if not os.path.exists(COCO_ROOT):
-                print('Must specify dataset_root if specifying dataset')
-                sys.exit(-1)
-            print("WARNING: Using default COCO dataset_root because " +
-                  "--dataset_root was not specified.")
-            args.dataset_root = COCO_ROOT
-        cfg = coco
-        dataset = COCODetection(root=args.dataset_root, transform=SSDAugmentation(cfg['min_dim'], VOC_MEANS)) # TODO VPY VOC MEANS ?!
-    elif args.dataset == 'VOC':
-        if args.dataset_root == COCO_ROOT:
-            print('Must specify dataset if specifying dataset_root')
-            sys.exit(-1)
-        cfg = voc
-        dataset_mean = compute_VOC_dataset_mean(args.dataset_root, args.image_set)
+    elif dataset_name == "COCO":
+        from data.coco_list import ListDataset, detection_collate_COCO_YOLO
+        dataset = ListDataset(args["train_set"])
+        data_loader = torch.utils.data.DataLoader(
+            dataset=dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=args['num_workers'],
+            collate_fn=detection_collate_COCO_YOLO)
 
-        dataset = VOCDetection(root=args.dataset_root, transform=SSDAugmentation(cfg['min_dim'], VOC_MEANS))
+    # build net
+    if model_name in {"MOBILENET2_SSD", "VGG_SSD"}:
+        from models.vgg16_ssd import build_vgg_ssd
+        from models.mobilenet2_ssd import build_mobilenet_ssd
+        from layers.modules import MultiBoxLoss
+        if model_name == "VGG_SSD":
+            ssd_net = build_vgg_ssd('train', args['ssd_min_dim'], args['classes'], cfg=args)
+        else:
+            ssd_net = build_mobilenet_ssd('train', args['ssd_min_dim'], args['classes'], cfg=args)
+        model = ssd_net
 
-    elif args.dataset == 'KAIST':
-        if args.dataset_root == COCO_ROOT:
-            print('Must specify dataset if specifying dataset_root')
-            sys.exit(-1)
-        if (args.image_set is None) or (not os.path.exists(args.image_set)):
-            print("When using kaist, image set must be defined to a valid file: {}".format(args.image_set))
-        cfg = kaist
+        if cuda:
+            # model = torch.nn.DataParallel(ssd_net)
+            cudnn.benchmark = True
 
-        if args.show_dataset == True:
-            show_dataset(args.dataset_root, args.image_set, args.image_fusion)
-        # dataset_mean = compute_KAIST_dataset_mean(args.dataset_root, args.image_set)
-        #dataset = KAISTDetection(root=args.dataset_root, image_set=args.image_set, transform=SSDAugmentation(cfg['min_dim'], tuple(dataset_mean)))
-        dataset = KAISTDetection(root=args.dataset_root, image_set=args.image_set, transform=SSDAugmentation(cfg['min_dim'], VOC_MEANS), image_fusion=args.image_fusion)
-    else:
-        print("No dataset specified")
-        sys.exit(-1)
+        if args['resume']:
+            print('Resuming training, loading {}...'.format(args['resume']))
+            ssd_net.load_weights(args['resume'])
+            raise NotImplementedError
+        else:
+            weights = torch.load(args['ssd_initial_weights'])
+            print('Loading base network...')
+            ssd_net.basenet.load_state_dict(weights)
 
-    ssd_net = build_ssd('train', cfg['min_dim'], cfg['num_classes'], dataset=args.dataset)
-    net = ssd_net
+            print('Initializing weights...')
+            # initialize newly added layers' weights with xavier method
+            ssd_net.extras.apply(weights_init)
+            ssd_net.loc.apply(weights_init)
+            ssd_net.conf.apply(weights_init)
 
-    if args.cuda:
-        net = torch.nn.DataParallel(ssd_net)
-        cudnn.benchmark = True
+        if cuda:
+            model = model.cuda()
 
-    if args.resume:
-        print('Resuming training, loading {}...'.format(args.resume))
-        ssd_net.load_weights(args.resume)
-    else:
-        vgg_weights = torch.load(args.basenet)
-        print('Loading base network...')
-        ssd_net.vgg.load_state_dict(vgg_weights)
+        optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=args['ssd_momentum'], weight_decay=args['ssd_weight_decay'])
+        criterion = MultiBoxLoss(args['classes'], 0.5, 3, args['cuda'], args['ssd_variance'])
 
-    if args.cuda:
-        net = net.cuda()
 
-    if not args.resume:
-        print('Initializing weights...')
-        # initialize newly added layers' weights with xavier method
-        ssd_net.extras.apply(weights_init)
-        ssd_net.loc.apply(weights_init)
-        ssd_net.conf.apply(weights_init)
+    elif model_name == "YOLO":
+        from models.yolo3 import Darknet
+        from models.yolo3 import weights_init_normal
 
-    optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
-    criterion = MultiBoxLoss(cfg['num_classes'], 0.5, 3, args.cuda)
+        model = Darknet(args['yolo_model_config_path'])
 
-    net.train()
+        if args['yolo_initial_weights'] is not None:
+            model.load_weights(args['yolo_initial_weights'])
+        else:
+            model.apply(weights_init_normal)
 
-    # loss counters
-    loc_loss = 0
-    conf_loss = 0
-    epoch = 0
-    print('Loading the dataset...')
+        if cuda:
+            model = model.cuda()
 
-    epoch_size = len(dataset) // args.batch_size
+        optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()))
 
+    # set train state
+    model.train()
+
+
+    # create plots
+    if args['visdom']:
+        vis_title = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S - ")
+        vis_title += str(model_name + ".PyTorch on '" + args["name"] + ' | lr: ' + str(learning_rate))
+        vis_legend = ['Model loss', 'n/d', 'Total Loss'] if model_name == "YOLO" else ['loc loss', 'conf loss', 'Total Loss']
+        iter_plot = viz.create_vis_plot('Iteration', 'Loss', vis_title, vis_legend)
+
+    epoch_size = len(dataset) // batch_size
+
+    print("Training model: '{}' on dataset: '{}'".format(model_name, dataset_name))
     print('Dataset length: {}'.format(len(dataset)))
-    print('Epoch size: {}'.format(epoch_size))
-
-    print('Training SSD on:', dataset.name)
-    print('Using the specified args:')
-    print(args)
+    print('Epoch size: {}, batch size: {}'.format(epoch_size, batch_size))
 
     step_index = 0
+    loc_loss = 0
+    conf_loss = 0
 
-    if args.visdom:
-        vis_title = 'SSD.PyTorch on ' + dataset.name + '| lr: ' + repr(args.lr)
-        vis_legend = ['Loc Loss', 'Conf Loss', 'Total Loss']
-        iter_plot = create_vis_plot('Iteration', 'Loss', vis_title, vis_legend)
-        epoch_plot = create_vis_plot('Epoch', 'Loss', vis_title, vis_legend)
+    iteration_total = 0
+    for epoch in range(epochs):
+        for batch_i, (imgs, targets) in enumerate(data_loader):
+            t0 = time.time()
 
-    data_loader = data.DataLoader(dataset, args.batch_size, num_workers=args.num_workers, shuffle=True, collate_fn=detection_collate, pin_memory=True)
-
-    # create batch iterator
-    batch_iterator = iter(data_loader)
-    for iteration in range(args.start_iter, cfg['max_iter']):
-        if args.visdom and iteration != 0 and (iteration % epoch_size == 0):
-            epoch += 1
-            update_vis_plot(epoch, loc_loss, conf_loss, epoch_plot, None, 'append', epoch_size)
-            # reset epoch loss counters
-            loc_loss = 0
-            conf_loss = 0
-
-        if iteration in cfg['lr_steps']:
-            step_index += 1
-            adjust_learning_rate(optimizer, args.gamma, step_index)
-
-        # load train data
-        t0 = time.time()
-        try:
             # load train data
-            images, targets = next(batch_iterator)
-        except StopIteration:
-            batch_iterator = iter(data_loader)
-            images, targets = next(batch_iterator)
-        data_time = time.time() - t0
+            if model_name == "YOLO":
+                imgs = Variable(imgs.type(Tensor))
+                targets = Variable(targets.type(Tensor), requires_grad=False)
+                optimizer.zero_grad()
+                loss = model(imgs, targets)
+                loss.backward()
+                optimizer.step()
 
-        if args.cuda:
-            images = images.cuda()
-            targets = [ann.cuda() for ann in targets]
+            elif model_name in {"MOBILENET2_SSD", "VGG_SSD"}:
+                lr_steps = args['ssd_lr_steps']
+                if iteration_total in lr_steps:
+                    step_index += 1
+                    adjust_learning_rate(optimizer, gamma, step_index, learning_rate)
+                if cuda:
+                    images = imgs.cuda()
+                    targets = [ann.cuda() for ann in targets]
+                else:
+                    raise NotImplementedError
 
-        # forward
-        out = net(images)
+                # forward
+                out = model(images)
 
-        # backprop
-        optimizer.zero_grad()
-        loss_l, loss_c = criterion(out, targets)
-        loss = loss_l + loss_c
-        loss.backward()
-        optimizer.step()
-        batch_time = time.time() - t0
-        loc_loss += loss_l.data.item()
-        conf_loss += loss_c.data.item()
+                # backprop
+                optimizer.zero_grad()
+                loss_l, loss_c = criterion(out, targets)
+                loss = loss_l + loss_c
+                loss.backward()
+                optimizer.step()
+                # loc_loss += loss_l.data.item()
+                # conf_loss += loss_c.data.item()
+                loc_loss = loss_l.data.item()
+                conf_loss = loss_c.data.item()
 
-        if iteration % 10 == 0:
-            print(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S") + " | " + args.dataset + ': iter ' + repr(iteration) + ' || lr: %g || Loss: %.4f ||' %
-                  (optimizer.param_groups[0]['lr'], loss.data.item()), end=' ')
-            print('data: %.3fms, batch: %.3fs' % (data_time*1000, batch_time))
+            batch_time = time.time() - t0
 
-        if args.visdom:
-            update_vis_plot(iteration, loss_l.data.item(), loss_c.data.item(), iter_plot, epoch_plot, 'append')
+            # log progress
+            if iteration_total % 50 == 0:
+                now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                if model_name in {"MOBILENET2_SSD", "VGG_SSD"}:
+                    loc_loss = loss_l
+                    conf_loss = loss_c
+                    tot_loss = loss_l + loss_c
+                    print(
+                        "[%s] [Iteration: %d/%d] [Batch %d/%d, Epoch %d/%d, total images %d/%d] [Losses: loc: %f, conf %f, total %f] [batch: %.3fms] " %
+                        (now,
+                         iteration_total, epoch_size * epochs,
+                         batch_i, len(data_loader),
+                         epoch, epochs,
+                         (iteration_total * batch_size), epochs * len(data_loader) * batch_size,
+                         loc_loss, conf_loss, tot_loss,
+                         batch_time * 1000)
+                        )
 
-        # save model at a given frequency during training
-        if iteration != 0 and iteration % args.save_frequency == 0:
-            print('Saving state, iter:', iteration)
-            model_name = os.path.join(args.save_folder, 'ssd300_' + args.dataset + '_' + repr(iteration) + '.pth')
-            latest_name = os.path.join(args.save_folder, 'ssd300_' + args.dataset + '_latest.pth')
-            torch.save(ssd_net.state_dict(), model_name)
-            os.system('ln -sf {} {}'.format(model_name, latest_name))
+                elif model_name == "YOLO":
+                    conf_loss = model.losses["conf"]
+                    cls_loss = model.losses["cls"]
+                    tot_loss = loss.item()
+                    recall = model.losses["recall"]
+                    precision = model.losses["precision"]
 
-    # save model at the end of the training
-    torch.save(ssd_net.state_dict(), os.path.join(args.save_folder, args.dataset, args.dataset + '.pth'))
-    latest_name = os.path.join(args.save_folder, 'ssd300_' + args.dataset + '_latest.pth')
-    os.system('ln -sf {} {}'.format(model_name, latest_name))
+                    print("[%s] [Iteration: %d/%d] [Batch %d/%d, Epoch %d/%d, total images %d/%d] [Losses: conf %f, cls %f, total %f, recall: %.5f, precision: %.5f] [batch: %.3fms] "%
+                          ( now,
+                            iteration_total, epoch_size * epochs,
+                            batch_i, len(data_loader),
+                            epoch, epochs,
+                            (iteration_total * batch_size), epochs * len(data_loader) * batch_size,
+                            conf_loss, cls_loss, tot_loss, recall, precision,
+                            batch_time * 1000)
+                    )
 
-    print("Finished. Model is saved at {}".format(latest_name))
-    return
+            model.seen += imgs.size(0)
 
+            # save progress
+            if ((iteration_total) % (args['save_frequency']) == 0) and iteration_total > 0:
+                saved_model_name = "%s/%s__%s__%s__fusion-%d__iter-%d.weights" % (args['save_folder'], model_name, dataset_name, imageset_name, image_fusion, epoch * len(data_loader) + batch_i)
+                model.save_weights(saved_model_name)
+                # torch.save(ssd_net.state_dict(), model_name)
+                print("Weights saved for epoch {}/{}, batch {}/{}".format(epoch, epochs, batch_i, len(data_loader)))
 
-def adjust_learning_rate(optimizer, gamma, step):
-    """Sets the learning rate to the initial LR decayed by 10 at every
-        specified step
-    # Adapted from PyTorch Imagenet example:
-    # https://github.com/pytorch/examples/blob/master/imagenet/main.py
-    """
-    lr = args.lr * (gamma ** (step))
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
+            plot_loss1 = loc_loss if model_name in{"VGG_SSD", "MOBILENET2_SSD"} else loss.item()
+            plot_loss2 = conf_loss if model_name in{"VGG_SSD", "MOBILENET2_SSD"} else 0
+
+            if args['visdom']:
+                viz.update_vis_plot(iteration_total, plot_loss1, plot_loss2, iter_plot, None, 'append')
+            iteration_total += 1
+
+    print("Finished training at {}".format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
 
 
 def xavier(param):
@@ -300,72 +283,92 @@ def xavier(param):
 def weights_init(m):
     if isinstance(m, nn.Conv2d):
         xavier(m.weight.data)
-        m.bias.data.zero_()
+        if m.bias is not None:
+            m.bias.data.zero_()
+
+def adjust_learning_rate(optimizer, gamma, step, lr):
+    """Sets the learning rate to the initial LR decayed by 10 at every
+        specified step
+    # Adapted from PyTorch Imagenet example:
+    # https://github.com/pytorch/examples/blob/master/imagenet/main.py
+    """
+    lr = lr * (gamma ** (step))
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
 
 
-def create_vis_plot(_xlabel, _ylabel, _title, _legend):
-    return viz.line(
-        X=torch.zeros((1,)).cpu(),
-        Y=torch.zeros((1, 3)).cpu(),
-        opts=dict(
-            xlabel=_xlabel,
-            ylabel=_ylabel,
-            title=_title,
-            legend=_legend
-        )
-    )
-
-
-def update_vis_plot(iteration, loc, conf, window1, window2, update_type, epoch_size=1):
-    viz.line(
-        X=torch.ones((1, 3)).cpu() * iteration,
-        Y=torch.Tensor([loc, conf, loc + conf]).unsqueeze(0).cpu() / epoch_size,
-        win=window1,
-        update=update_type
-    )
-    # initialize epoch plot on first iteration
-    if iteration == 0:
-        viz.line(
-            X=torch.zeros((1, 3)).cpu(),
-            Y=torch.Tensor([loc, conf, loc + conf]).unsqueeze(0).cpu(),
-            win=window2,
-            update=True
-        )
-
-
-if __name__ == '__main__':
-    args = arg_parser()
-
+def main(args):
+    #prepare for CUDA
+    cuda = torch.cuda.is_available() and args['cuda']
     if torch.cuda.is_available():
-        if args.cuda:
+        if cuda:
             torch.set_default_tensor_type('torch.cuda.FloatTensor')
-        if not args.cuda:
+        else:
             print("WARNING: It looks like you have a CUDA device, but aren't using CUDA.\nRun with --cuda for optimal training speed.")
             torch.set_default_tensor_type('torch.FloatTensor')
     else:
         torch.set_default_tensor_type('torch.FloatTensor')
 
-    if not os.path.exists(args.save_folder):
-        os.makedirs(args.save_folder)
+    # prepare visualization
+    if args['visdom']:
+        viz = vis_plot()
+    else:
+        viz = None
 
-    if not os.path.exists(os.path.join(args.save_folder, args.dataset)):
-        os.makedirs(os.path.join(args.save_folder, args.dataset))
+    # train
+    train(args, viz)
 
-    if len(os.listdir(os.path.join(args.save_folder, args.dataset))) != 0:
-        print("Save directory is not empty!")
-        sys.exit(-1)
 
-    if args.visdom:
-        import visdom
-        viz = visdom.Visdom()
+def check_args(args):
+    #prepare output folder
+    if not os.path.exists(args['save_folder']):
+        os.makedirs(args['save_folder'])
+    if len(os.listdir(args['save_folder'])) != 0:
+        print("Save directory is not empty! : {}".format(args['save_folder']))
+        if "tmp" in args['save_folder']:
+            print("but as the save folder contains 'tmp', we remove old data:")
+            files = glob.glob(args['save_folder'] + '/*')
+            for f in files:
+                if f.endswith('.weights') or f.endswith('.pth'):
+                    print("rm {}".format(f))
+                    os.remove(f)
+        else:
+            print("not a tmp folder, you must fix it yourself!")
+            sys.exit(-1)
 
-    if args.save_frequency < 0:
+    if args['save_frequency'] < 0:
         print("save frequency must be > 0")
         sys.exit(-1)
 
-    if args.dataset == "KAIST":
-        if args.image_fusion == -1:
+    if args['name'] == "KAIST":
+        if args['image_fusion'] == -1:
             print("image fusion must be specified")
             sys.exit(-1)
-        print("Image fusion value: {}".format(args.image_fusion))
-    train(args)
+        print("Image fusion value: {}".format(args['image_fusion']))
+
+    if args['dataset_root'] == None:
+        print('Must specify dataset_root')
+        sys.exit(-1)
+
+    if not os.path.exists(args['dataset_root']):
+        print('Must specify *existing* dataset_root')
+        sys.exit(-1)
+
+    if args["model"] in {"VGG_SSD", "MOBILENET2_SSD"}:
+        if args["name"] not in {"VOC", "KAIST"}:
+            print("Dataset {} not supported with model {}".format(args["name"], args["model"]))
+            sys.exit(-1)
+
+    elif args["model"] == "YOLO":
+        if args["name"] not in {"COCO", "KAIST"}:
+            print("Dataset {} not supported with model {}".format(args["name"], args["model"]))
+            sys.exit(-1)
+    else:
+        print("Model {} is not supported".format(args["model"]))
+        sys.exit(-1)
+
+
+if __name__ == "__main__":
+    args = arg_parser()
+    check_args(args)
+    main(args)
