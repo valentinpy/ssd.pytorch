@@ -6,24 +6,17 @@
 
 import torch
 import argparse
-
 from data import BaseTransform
 from data.kaist import KAISTAnnotationTransform, KAISTDetection
 from data.kaist import KAIST_CLASSES as KAISTlabelmap
-from eval.get_GT import get_GT
-
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
-
-from skimage import data, img_as_float
 from skimage import exposure
-from skimage.morphology import disk
-from skimage.filters import rank
-from skimage.util import img_as_ubyte
-
-from utils.str2bool import str2bool
 from config.parse_config import *
+import math
+import scipy
+import scipy.signal
 
 import random
 
@@ -41,62 +34,42 @@ def normalize(img):
     img = img / np.max(img) * 255  # normalize
     return img
 
+
 def intinze(img):
     return img.astype(int)
+
+
+def rgb2gray(rgb):
+    r, g, b = rgb[:,:,0], rgb[:,:,1], rgb[:,:,2]
+    gray = 0.2989 * r + 0.5870 * g + 0.1140 * b
+    return gray
 
 def gray_invert(img):
     return 255-img
 
-def myplot(img1, img2, img3, img4, img5, img6, legend1=None, index=-1, legend2=None, legend3=None, legend4=None, legend5=None, legend6=None):
 
-    img1 = intinze(img1)
-    img2 = intinze(img2)
-    img3 = intinze(img3)
-    img4 = intinze(img4)
-
-    # fig = plt.figure("Test")
+def myplot(legends, *argv):
     plt.suptitle('Image: ' + repr(index))
-
-    plt.subplot(231)
-    plt.title((legend1))
-    plt.axis('off')
-    plt.imshow(img1, interpolation='nearest')
-
-    plt.subplot(232)
-    plt.title((legend2))
-    plt.axis('off')
-    plt.imshow(img2, interpolation='nearest')
-
-    plt.subplot(233)
-    plt.title((legend3))
-    plt.axis('off')
-    plt.imshow(img3, interpolation='nearest')
-
-    plt.subplot(234)
-    plt.title((legend4))
-    plt.axis('off')
-    plt.imshow(img4, interpolation='nearest')
-
-    plt.subplot(235)
-    plt.title((legend5))
-    plt.axis('off')
-    plt.imshow(img5, interpolation='nearest')
-
-    plt.subplot(236)
-    plt.title((legend6))
-    plt.axis('off')
-    plt.imshow(img6, interpolation='nearest')
-
-
-    # plt.show()
+    plt.subplots_adjust(left=0.001, bottom=0.001, right=0.999, top=0.95, wspace=0.001, hspace=0.1)
+    i=0
+    for arg in argv:
+        arg = normalize(arg)
+        arg = intinze(arg)
+        ndim1 = math.ceil(1*math.sqrt(len(argv)))
+        ndim2 = math.ceil(len(argv)/ndim1)
+        plt.subplot(ndim2, ndim1, i+1)
+        plt.title((legends[i]))
+        plt.axis('off')
+        plt.imshow(arg, interpolation='nearest')
+        i+=1
     plt.waitforbuttonpress()
+
 
 if __name__ == '__main__':
 
     # parse arguments
     args = vars(arg_parser())
     config = parse_data_config(args['data_config_path'])
-
     args = {**args, **config}
     del config
 
@@ -106,7 +79,7 @@ if __name__ == '__main__':
     else:
         torch.set_default_tensor_type('torch.FloatTensor')
 
-    #Maximize figure
+    # Maximize figure
     fig = plt.figure("Test")
     mng = plt.get_current_fig_manager()
     mng.resize(*mng.window.maxsize())
@@ -125,7 +98,7 @@ if __name__ == '__main__':
         #---------------------------------------------
         # read images
         # ---------------------------------------------
-        index = i#int(i/2)
+        index = i
         if i%2 == 0:
             #day
             print("\nPulling DAY image: index: {}".format(index))
@@ -138,7 +111,6 @@ if __name__ == '__main__':
             img_visible_orig = dataset_night.pull_visible_image(index)
             img_lwir_orig = dataset_night.pull_raw_lwir_image(index)
             img_size = img_visible_orig.shape[::-1][1:3]
-        # get image + annotations + dimensions
 
         #---------------------------------------------
         # normalize before
@@ -149,32 +121,25 @@ if __name__ == '__main__':
         #---------------------------------------------
         # little cooking #TODO
         # ---------------------------------------------
-        img_lwir = gray_invert(img_lwir)
+        img_lwir_inverted = gray_invert(img_lwir)
 
-
-        p2, p98 = np.percentile(img_lwir/255, (2, 98))
-        lwir_eq0 = normalize(exposure.rescale_intensity(img_lwir/255, in_range=(p2, p98)))
-
-        lwir_eq1 = normalize(exposure.equalize_hist(img_lwir))
+        # p2, p98 = np.percentile(img_lwir_inverted/255, (2, 98))
+        # lwir_eq0 = normalize(exposure.rescale_intensity(img_lwir_inverted/255, in_range=(p2, p98)))
+        # lwir_eq1 = normalize(exposure.equalize_hist(img_lwir_inverted))
 
         # # Adaptive Equalization
-        lwir_eq2 = normalize(exposure.equalize_adapthist(img_lwir/255, clip_limit=0.03))
+        lwir_eq2 = normalize(exposure.equalize_adapthist(img_lwir_inverted/255, clip_limit=0.03))
 
-        img_fused = img_visible_orig + img_lwir
-        #---------------------------------------------
-        # normalize after
-        # ---------------------------------------------
-        img_visible = normalize(img_visible)
-        img_lwir = normalize(img_lwir)
-        img_fused = normalize(img_fused)
-        img5 =np.zeros_like(img_fused)
-        img6 = np.zeros_like(img_fused)
+        # convolved = scipy.signal.convolve2d(rgb2gray(img_visible_orig), rgb2gray(img_lwir_inverted))
 
+        img_fused_add = img_visible_orig + img_lwir_inverted
+        img_fused_mul = img_visible_orig * img_lwir_inverted
 
         #---------------------------------------------
         # plot
         # --------------------------------------------
-        myplot(img_visible_orig, img_visible, img_lwir, lwir_eq2, img5, img6, index=index, legend1='img_visible_orig', legend2='img_visible', legend3='img_lwir', legend4='lwir_eq2', legend5='', legend6='')
-        #myplot(img_lwir, lwir_eq0, lwir_eq1,lwir_eq2, index=index, legend1='img_lwir', legend2='lwir_eq0', legend3='lwir_eq1', legend4='lwir_eq2')
+        myplot(['img_visible_orig', 'img_lwir_orig', 'img_lwir_inverted', 'img_fused_add', 'img_fused_mul'], img_visible_orig, img_lwir_orig,
+               img_lwir_inverted, img_fused_add, img_fused_mul)
+        # myplot(['img_visible_orig', 'img_lwir_orig', 'lwir_eq2', 'img_fused_add', 'img_fused_mul', 'convolved'], img_visible_orig, img_lwir_orig, lwir_eq2, img_fused_add, img_fused_mul, convolved)
 
     print("finished")
