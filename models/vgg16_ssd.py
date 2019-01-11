@@ -221,8 +221,8 @@ def build_vgg_ssd(phase, size=300, num_classes=None, cfg=None):
     if num_classes == None:
         print("num_classes not specified!")
         return
-
-    base_, extras_, head_ = multibox(vgg(base[str(size)], 3),
+    in_channels = 4 #3 if rgb
+    base_, extras_, head_ = multibox(vgg(base[str(size)], in_channels),
                                      add_extras(extras[str(size)], 1024),
                                         mbox[str(size)], num_classes)
     return SSD(phase, size, base_, extras_, head_, num_classes, cfg=cfg)

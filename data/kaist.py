@@ -199,6 +199,8 @@ class KAISTDetection(data.Dataset):
         elif self.image_fusion == 2:
             img = self.pull_raw_lwir_image(index)
             img = 255-img
+        elif self.image_fusion == 3:
+            img = self.pull_raw_RGBT_image(index)
         else:
             print("image fusion not handled")
             sys.exit(-1)
@@ -215,9 +217,9 @@ class KAISTDetection(data.Dataset):
             target = np.array(target)
             #print("VPY: img_id: {}, target: {}".format(img_id, target))
             img, boxes, labels = self.transform(img, target[:, :4], target[:, 4])
-            # to rgb
-            img = img[:, :, (2, 1, 0)]
-            # img = img.transpose(2, 0, 1)
+            # to rgbt
+            img = img[:, :, (2, 1, 0, 3)]
+
             target = np.hstack((boxes, np.expand_dims(labels, axis=1)))
         return "not defined", torch.from_numpy(img).permute(2, 0, 1), target, height, width
 
@@ -241,6 +243,8 @@ class KAISTDetection(data.Dataset):
         elif self.image_fusion == 2:
             img = self.pull_raw_lwir_image(index)
             img = 255-img
+        elif self.image_fusion == 3:
+            img = self.pull_raw_RGBT_image(index)
         else:
             print("image fusion not handled")
             sys.exit(-1)
@@ -264,7 +268,6 @@ class KAISTDetection(data.Dataset):
 
         # to rgb
         img = img[:, :, (2, 1, 0)]
-        # print("pull RGB IMG: index: {}, id:{}".format(index, img_id[3]))
         return img
 
     def pull_raw_lwir_image(self, index):
@@ -280,11 +283,27 @@ class KAISTDetection(data.Dataset):
         '''
 
         img_id = self.ids[index]
-        # print("pull LIR IMG: index: {}, id:{}".format(index, img_id[3]))
         img = cv2.imread(self._img_lwir_root_path % img_id[0:4])
         return img
 
-        # return cv2.imread(self._img_vis_root_path % img_id, cv2.IMREAD_COLOR)
+    def pull_raw_RGBT_image(self, index):
+        '''Returns the original image object at index in PIL form (VISIBLE + LWIR image => RGBT)
+
+        Note: not using self.__getitem__(), as any transformations passed in
+        could mess up this functionality.
+
+        Argument:
+            index (int): index of img to show
+        Return:
+            PIL img
+        '''
+
+        img_id = self.ids[index]
+        img_RGB = cv2.imread(self._img_vis_root_path % img_id[0:4])[:, :, (2, 1, 0)]
+        img_T = cv2.imread(self._img_lwir_root_path % img_id[0:4], cv2.IMREAD_GRAYSCALE)
+        img = np.dstack((img_RGB, img_T))
+        return img
+
 
     def pull_img_id(self, index):
         img_id = self.ids[index]

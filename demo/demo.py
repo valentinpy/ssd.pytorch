@@ -68,12 +68,14 @@ def test_net(model_name, net, cuda, dataset, conf_thres, nms_thres, classes, tra
         # --------------------------
         # get image and GT
         # --------------------------
-        img_gt= dataset.pull_image(i)
-        img_det = img_gt.copy()
+        img= dataset.pull_visible_image(i)
+        img_det = img.copy()
+        img_gt = img.copy()
         img_id, annotation, _ = dataset.pull_anno(i)
 
         _, img,_,_,_ = dataset[i]
         input_imgs = Variable(img.type(Tensor).unsqueeze(0))
+        del img
 
         if cuda:
             input_imgs = input_imgs.cuda()

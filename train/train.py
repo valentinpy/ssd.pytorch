@@ -128,6 +128,8 @@ def train(args, viz = None):
             raise NotImplementedError
         else:
             weights = torch.load(args['ssd_initial_weights'])
+            weights['0.weight'] =torch.stack((weights['0.weight'][:, 0, :, :], weights['0.weight'][:, 0, :, :], weights['0.weight'][:, 1, :, :], weights['0.weight'][:, 2, :, :]),
+                dim=1)
             print('Loading base network...')
             ssd_net.basenet.load_state_dict(weights)
 

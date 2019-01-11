@@ -68,7 +68,7 @@ def main(args):
         torch.set_default_tensor_type('torch.FloatTensor')
 
     # load data
-    dataset_mean = (104, 117, 123)  # TODO VPY and for kaist ?
+    dataset_mean = (104, 117, 123, 104)  # TODO VPY and for kaist ?
 
     # get augmentation function
     if model_name == "YOLO":

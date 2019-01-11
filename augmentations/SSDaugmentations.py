@@ -388,18 +388,22 @@ class PhotometricDistort(object):
         self.rand_light_noise = RandomLightingNoise()
 
     def __call__(self, image, boxes, labels):
-        im = image.copy()
+        # VPY: Here is a little hack to keep 4 channels when using RGBT images: Thermal image (channel 3) is not distorded
+        im = image[:,:,0:3].copy() # apply on 3 first channels
         im, boxes, labels = self.rand_brightness(im, boxes, labels)
         if random.randint(2):
             distort = Compose(self.pd[:-1])
         else:
             distort = Compose(self.pd[1:])
         im, boxes, labels = distort(im, boxes, labels)
-        return self.rand_light_noise(im, boxes, labels)
+        im, boxes, labels = self.rand_light_noise(im, boxes, labels)
+        if image.shape[2] > 3:
+            im = np.dstack((im, image[:,:,3:]))
+        return im, boxes, labels
 
 
 class SSDAugmentation(object):
-    def __init__(self, size=300, mean=(104, 117, 123)):
+    def __init__(self, size=300, mean=(104, 117, 123, 104)): # TODO VPY: we might want to use red mean if we use red weights
         self.mean = mean
         self.size = size
         self.augment = Compose([
