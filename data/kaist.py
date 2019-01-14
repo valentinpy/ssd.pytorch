@@ -186,10 +186,8 @@ class KAISTDetection(data.Dataset):
         return len(self.ids)
 
     def pull_item(self, index):
-        #TODO VPY: Only visible image is loaded (no lwir)
         img_id = self.ids[index]
 
-        #TODO VPY parse annotations => target
         target = self._annopath % img_id[0:4]
 
         if self.image_fusion == 0:
@@ -215,16 +213,19 @@ class KAISTDetection(data.Dataset):
 
         if self.transform is not None:
             target = np.array(target)
-            #print("VPY: img_id: {}, target: {}".format(img_id, target))
             img, boxes, labels = self.transform(img, target[:, :4], target[:, 4])
+            target = np.hstack((boxes, np.expand_dims(labels, axis=1)))
+
+        if self.image_fusion < 3:
+            # to rgb
+            img = img[:, :, (2, 1, 0)]
+        else:
             # to rgbt
             img = img[:, :, (2, 1, 0, 3)]
 
-            target = np.hstack((boxes, np.expand_dims(labels, axis=1)))
         return "not defined", torch.from_numpy(img).permute(2, 0, 1), target, height, width
 
     def pull_image(self, index):
-        #TODO VPY: Only visible image is loaded (no lwir)
         '''Returns the original image object at index in PIL form
 
         Note: not using self.__getitem__(), as any transformations passed in
