@@ -53,6 +53,20 @@ def arg_parser():
 
     return args
 
+def add_bb(img, bbox, label):
+    cv2.rectangle(img,
+                  (int(bbox[0]), int(bbox[1])),
+                  (int(bbox[2]), int(bbox[3])),
+                  (0, 255, 0),
+                  1)
+    cv2.putText(img, label, (int(bbox[0]), int(bbox[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
+    return img
+
+def add_img_title(img,title):
+    cv2.putText(img, title, (int(img.shape[0]/2), 18), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
+    return img
+
+
 def test_net(model_name, net, cuda, dataset, conf_thres, nms_thres, classes, transform):
     print('\nPerforming object detection:')
 
@@ -68,14 +82,24 @@ def test_net(model_name, net, cuda, dataset, conf_thres, nms_thres, classes, tra
         # --------------------------
         # get image and GT
         # --------------------------
-        img= dataset.pull_visible_image(i)
-        img_det = img.copy()
-        img_gt = img.copy()
+
+        #annotation
         img_id, annotation, _ = dataset.pull_anno(i)
 
+        # raw images
+        img_vis= dataset.pull_visible_image(i)
+        img_lwir = 255 - dataset.pull_raw_lwir_image(i)
+
+        #images on which we display GT
+        img_gt_vis = img_vis.copy()
+        img_gt_lwir = img_lwir.copy()
+
+        # image on which we display detections
+        img_det = img_lwir.copy()
+
+        # image used for inference (resized,... with BaseTransform)
         _, img,_,_,_ = dataset[i]
         input_imgs = Variable(img.type(Tensor).unsqueeze(0))
-        del img
 
         if cuda:
             input_imgs = input_imgs.cuda()
@@ -101,36 +125,34 @@ def test_net(model_name, net, cuda, dataset, conf_thres, nms_thres, classes, tra
         for box in annotation:
             gt_id_cnt += 1
             label = [key for (key, value) in dataset.target_transform.class_to_ind.items() if value == box[4]][0]
-            cv2.rectangle(img_gt,
-                          (int(box[0]), int(box[1])),
-                          (int(box[2]), int(box[3])),
-                          (0, 255, 0),
-                          1)
-            cv2.putText(img_gt, label, (int(box[0]), int(box[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
+
+            img_gt_lwir = add_bb(img_gt_lwir, box,label)
+            img_gt_vis = add_bb(img_gt_vis, box,label)
+
+            img_gt_lwir = add_img_title(img_gt_lwir, "GT on raw LWIR")
+            img_gt_vis = add_img_title(img_gt_vis, "GT on raw VIS")
+
 
         # --------------------------
         # Detections
         # --------------------------
         if model_name in {"VGG_SSD", "MOBILENET2_SSD"}:
-            scale = torch.Tensor([img_gt.shape[1], img_gt.shape[0], img_gt.shape[1], img_gt.shape[0]])
+            scale = torch.Tensor([img_gt_lwir.shape[1], img_gt_lwir.shape[0], img_gt_lwir.shape[1], img_gt_lwir.shape[0]])
             pred_num = 0
             for i in range(detections.size(1)):  # loop for all classes
                 j = 0
                 while detections[0, i, j, 0] >= conf_thres:  # loop for all detection for the corresponding class
                     score = detections[0, i, j, 0]
+                    score = (score.data * 100).cpu().numpy().astype(int)
                     pt = (detections[0, i, j, 1:] * scale).cpu().numpy()
                     pred_num += 1
                     j += 1
-                    cv2.rectangle(img_det,
-                                  (int(pt[0]), int(pt[1])),
-                                  (int(pt[2]), int(pt[3])),
-                                  (255, 0, 0),
-                                  1)
-                    cv2.putText(img_det, np.array2string((score.data * 100).cpu().numpy().astype(int)),
-                                (int(pt[2]), int(pt[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1, cv2.LINE_AA)
+
+                    img_det = add_bb(img_det, pt, str(score))
+
 
         elif model_name == "YOLO":
-            scale = [img_gt.shape[1], img_gt.shape[0], img_gt.shape[1], img_gt.shape[0]]
+            scale = [img_gt_lwir.shape[1], img_gt_lwir.shape[0], img_gt_lwir.shape[1], img_gt_lwir.shape[0]]
             scale = [elem / 416 for elem in scale]
             if (detections is not None) and (detections[0] is not None):
                 detections = detections[0].cpu().numpy()
@@ -143,20 +165,19 @@ def test_net(model_name, net, cuda, dataset, conf_thres, nms_thres, classes, tra
                         xmax = int(detections[i, 2] * scale[2])
                         ymin = int(detections[i, 1] * scale[1])
                         ymax = int(detections[i, 3] * scale[3])
+                        box = [xmin, ymin, xmax, ymax]
                         label_name = repr(score)
                         pred_num += 1
                         j += 1
-                        cv2.rectangle(img_det,
-                                      (xmin, ymin),
-                                      (xmax, ymax),
-                                      (255, 0, 0),
-                                      1)
-                        cv2.putText(img_det, label_name, (xmax, ymin), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1, cv2.LINE_AA)
+                        img_det = add_bb(img_det, box, str(score))
 
         # --------------------------
         # Plot image, GT and dets
         # --------------------------
-        cv2.imshow("GT || DET", np.hstack((img_gt, img_det))[:, :, (2, 1, 0)])
+        raw = np.hstack((img_gt_lwir, img_gt_vis))
+        with_bb = np.hstack((img_det, img_det))
+        all = np.vstack((raw, with_bb))
+        cv2.imshow("GT || DET", all[:, :, (2, 1, 0)])
         cv2.waitKey(0)
 
 
