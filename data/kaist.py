@@ -301,7 +301,7 @@ class KAISTDetection(data.Dataset):
 
         img_id = self.ids[index]
         img_RGB = cv2.imread(self._img_vis_root_path % img_id[0:4])[:, :, (2, 1, 0)]
-        img_T = cv2.imread(self._img_lwir_root_path % img_id[0:4], cv2.IMREAD_GRAYSCALE)
+        img_T = 255-cv2.imread(self._img_lwir_root_path % img_id[0:4], cv2.IMREAD_GRAYSCALE)
         img = np.dstack((img_RGB, img_T))
         return img
 
