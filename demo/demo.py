@@ -1,57 +1,18 @@
-import argparse
-import os
-import glob
-import sys
 import cv2
 import signal
 from collections import OrderedDict
 
 from utils.timer import Timer
-from utils.str2bool import str2bool
-from config.parse_config import *
 from config.load_classes import load_classes
 from models.yolo3 import *
 from models.yolo3_utils import *
 from models.vgg16_ssd import build_vgg_ssd
 from models.mobilenet2_ssd import build_mobilenet_ssd
 
-
-import torch
 import torch.backends.cudnn as cudnn
 
 from data import BaseTransform
-
-
-def arg_parser():
-    parser = argparse.ArgumentParser(description='Single Shot MultiBox Detector Evaluation')
-    parser.add_argument('--image_set', default=None, help='Imageset')
-    parser.add_argument('--trained_model', default=None, type=str, help='Trained state_dict file path to open')
-    parser.add_argument('--image_fusion', default=-1, type=int, help='[KAIST]: type of image fusion: [0: visible], [1: lwir] [2: inverted LWIR] [...]')  # TODO VPY update when required
-    parser.add_argument('--corrected_annotations', default=False, type=str2bool, help='[KAIST] do we use the corrected annotations ? (must ahve compatible imageset (VPY-test-strict-type-5)')
-    parser.add_argument("--data_config_path", type=str, default=None, help="path to data config file")
-    parser.add_argument("--model", type=str, default=None, help="Model to demo, either 'VGG_SSD','MOBILENET2_SSD' or 'YOLO'")
-
-    args_cmd = vars(parser.parse_args())
-    args_cmd = {key: value for key, value in args_cmd.items() if value is not None}  # remove non attributed values from parser
-
-    args_file = parse_data_config(args_cmd['data_config_path'])
-    if args_cmd['model'] == "VGG_SSD":
-        args_file = {key.replace("vgg_", ""): value for key, value in args_file.items() if
-                     (not key.startswith("mobilenet")) and (not key.startswith("yolo"))}
-    elif args_cmd['model'] == "MOBILENET2_SSD":
-        args_file = {key.replace("mobilenet_", ""): value for key, value in args_file.items() if
-                     (not key.startswith("vgg")) and (not key.startswith("yolo"))}
-    elif args_cmd["model"] == "YOLO":
-        args_file = {key: value for key, value in args_file.items() if (not key.startswith("vgg")) and (not key.startswith("mobilenet"))}
-
-    # remove duplicates entries, command line has priority on config file
-    duplicates = (args_file.keys() & args_cmd.keys())
-    for key in duplicates:
-        del args_file[key]
-
-    args = {**args_cmd, **args_file}
-
-    return args
+from data.get_data import *
 
 def add_bb(img, bbox, label):
     cv2.rectangle(img,
@@ -183,7 +144,6 @@ def test_net(model_name, net, cuda, dataset, conf_thres, nms_thres, classes, tra
 
 def main(args):
     model_name = args["model"]
-    dataset_name = args["name"]
     cuda = torch.cuda.is_available() and args['cuda']
 
     if cuda:
@@ -219,33 +179,15 @@ def main(args):
     elif model_name == "YOLO":
         net = Darknet(args['yolo_model_config_path'], img_size=args['yolo_img_size'])
         net.load_weights(args['trained_model'])
+    else:
+        raise NotImplementedError
 
     print('Finished loading model!')
 
     net.eval()
 
-    # get augmentation function
-    if model_name == "YOLO":
-        from augmentations.YOLOaugmentations import YOLOaugmentation
-    elif model_name in {"MOBILENET2_SSD", "VGG_SSD"}:
-        from augmentations.SSDaugmentations import SSDAugmentationDemo
-
     # load data
-    if dataset_name == 'VOC':
-        from data.voc0712 import VOCDetection
-        from data.voc0712 import VOCAnnotationTransform
-        dataset = VOCDetection(root=args['dataset_root'], image_sets=[('2007', 'test')], transform=None, target_transform=VOCAnnotationTransform())
-    elif dataset_name == 'KAIST':
-        from data.kaist import KAISTDetection, KAISTAnnotationTransform
-        transform_fct = YOLOaugmentation(args['yolo_img_size']) if model_name == "YOLO" else SSDAugmentationDemo(args["ssd_min_dim"])
-        dataset = KAISTDetection(root=args['dataset_root'], image_set=args['image_set'], transform=transform_fct,
-                                 image_fusion=args['image_fusion'], corrected_annotations=args['corrected_annotations'],
-                                 target_transform=KAISTAnnotationTransform(output_format="VOC_EVAL"))
-    elif dataset_name == 'COCO':
-        from data.coco_list import ListDataset
-        dataset = ListDataset(list_path=args['validation_set'], img_size=args['yolo_img_size'])
-    else:
-        raise NotImplementedError
+    dataset = get_dataset_demo(args)
 
     if cuda:
         net = net.cuda()
@@ -261,33 +203,11 @@ def main(args):
         conf_thresh = args['ssd_visual_threshold']
         nms_thres = None
         transform_fct = BaseTransform(args["ssd_min_dim"], (104, 117, 123))
+    else:
+        raise NotImplementedError
 
     test_net(model_name=model_name, net=net, cuda=cuda, dataset=dataset, conf_thres=conf_thresh, nms_thres=nms_thres, classes=classes, transform=transform_fct)
 
-
-def check_args(args):
-    if args['name'] == "KAIST":
-        if args['image_fusion'] == -1:
-            print("image fusion must be specified")
-            sys.exit(-1)
-        print("Image fusion value: {}".format(args['image_fusion']))
-
-    if not os.path.exists(args['dataset_root']):
-        print('Must specify *existing* dataset_root')
-        sys.exit(-1)
-
-    if args["model"] in {"VGG_SSD", "MOBILENET2_SSD"}:
-        if args["name"] not in {"VOC", "KAIST"}:
-            print("Dataset {} not supported with model {}".format(args["name"], args["model"]))
-            sys.exit(-1)
-
-    elif args["model"] == "YOLO":
-        if args["name"] not in {"COCO", "KAIST"}:
-            print("Dataset {} not supported with model {}".format(args["name"], args["model"]))
-            sys.exit(-1)
-    else:
-        print("Model {} is not supported".format(args["model"]))
-        sys.exit(-1)
 
 def signal_handler(sig, frame):
     print('You pressed Ctrl+C!')
@@ -295,6 +215,6 @@ def signal_handler(sig, frame):
 
 if __name__ == '__main__':
     signal.signal(signal.SIGINT, signal_handler)
-    args = arg_parser()
-    check_args(args)
+    args = arg_parser(role="eval")
+    check_args(args, role="eval")
     main(args)
