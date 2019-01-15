@@ -4,7 +4,7 @@ import datetime
 from torch.autograd import Variable
 from utils.visualization import vis_plot
 from train.train_tools import *
-from data.get_data_train import *
+from data.get_data import *
 
 def train(args, viz = None):
     model_name = args["model"]

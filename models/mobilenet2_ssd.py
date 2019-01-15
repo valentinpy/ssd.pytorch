@@ -309,7 +309,13 @@ def build_mobilenet_ssd(phase, size=320, num_classes=None, width_mult=1., cfg=No
         print("ERROR: You specified size " + repr(size) + ". However, " +
               "currently only SSD320 (size=320) is supported!")
         return
-    base_, extras_, head_ = multibox(mobilenetv2(base[str(size)], 3, width_mult),
+
+    if cfg["image_fusion"] > 2:
+        in_channels = 4 # RGBT
+    else:
+        in_channels = 3 # RGB
+
+    base_, extras_, head_ = multibox(mobilenetv2(base[str(size)], in_channels, width_mult),
                                      add_extras(extras[str(size)], _make_divisible(1280 * width_mult, 8) if width_mult > 1.0 else 1280),
                                      mbox[str(size)], num_classes)
     return SSD(phase, size, base_, extras_, head_, num_classes, cfg=cfg)
