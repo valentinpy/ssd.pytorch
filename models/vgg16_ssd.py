@@ -49,7 +49,7 @@ class SSD(nn.Module):
 
         if phase == 'test':
             self.softmax = nn.Softmax(dim=-1)
-            self.detect = Detect(num_classes=num_classes, top_k=200, conf_thresh=0.005, nms_thresh=0.45, variance=cfg['ssd_variance']) #VPY: We allow more low-confidence boxes (slower)  #original was self.detect = Detect(num_classes, 200, 0.01, 0.45)
+            self.detect = Detect(num_classes=num_classes, top_k=200, conf_thresh=0.005, nms_thresh=0.45, variance=cfg['ssd_variance'])
 
     def forward(self, x):
         """Applies network layers and ops on input image(s) x.
@@ -201,8 +201,6 @@ extras = {
     '512': [],
 }
 mbox = {
-    #'300': [4, 6, 6, 6, 4, 4],  # number of boxes per feature map location  #Original
-    # '300': [5, 5, 5, 5, 5, 5], # VPY: for modified prior_boxes qhich keep only square + vertical boxes
     '300' : [7]*6,
     '512': [],
 }
@@ -221,7 +219,10 @@ def build_vgg_ssd(phase, size=300, num_classes=None, cfg=None):
     if num_classes == None:
         print("num_classes not specified!")
         return
-    in_channels = 4 #3 if rgb
+    if cfg["image_fusion"] > 2:
+        in_channels = 4 # RGBT
+    else:
+        in_channels = 3 # RGB
     base_, extras_, head_ = multibox(vgg(base[str(size)], in_channels),
                                      add_extras(extras[str(size)], 1024),
                                         mbox[str(size)], num_classes)
