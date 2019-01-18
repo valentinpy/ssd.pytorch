@@ -136,7 +136,7 @@ def test_net(model_name, net, cuda, dataset, conf_thres, nms_thres, classes, tra
         # Plot image, GT and dets
         # --------------------------
         raw = np.hstack((img_gt_lwir, img_gt_vis))
-        with_bb = np.hstack((img_det, img_det))
+        with_bb = np.hstack((img_det, 0*img_det)) # bottom-right image is not used at the moment.
         all = np.vstack((raw, with_bb))
         cv2.imshow("GT || DET", all[:, :, (2, 1, 0)])
         cv2.waitKey(0)
